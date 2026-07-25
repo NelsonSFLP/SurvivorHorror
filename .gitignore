@@ -3,8 +3,7 @@
 
 # Linux executables without extensions (common in Linux/WSL builds)
 # If your output executable has a specific name, e.g., main or game:
-game
-survivor_horror
+horror_engine.exe
 a.out
 
 # Common build output directories
@@ -13,3 +12,14 @@ build/
 *.out
 *.o
 horror_game
+
+# Temporary / Editor files
+.DS_Store
+*.tmp
+*.log
+
+# VS Code local cache (optional, but prevents workspace clutter)
+.vscode/*.log
+
+# VS Code directory
+.vscode/
