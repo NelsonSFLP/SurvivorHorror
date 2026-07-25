@@ -1,0 +1,15 @@
+# Windows executables
+*.exe
+
+# Linux executables without extensions (common in Linux/WSL builds)
+# If your output executable has a specific name, e.g., main or game:
+game
+survivor_horror
+a.out
+
+# Common build output directories
+bin/
+build/
+*.out
+*.o
+horror_game
