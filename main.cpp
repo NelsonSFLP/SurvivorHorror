@@ -39,6 +39,18 @@ void initGL() {
     // Enable Depth Testing so closer triangles occlude further ones 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+
+    // Enable OpenGL Lighting State Machine
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0); // LIGHT0 to our tactical flashlight
+
+    // Enable Color Material so glColor3f calls act as surface material properties
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // Set global ambient light to near-black (simulates pitch dark forest interior) 
+    GLfloat globalAmbient[] = { 0.02f, 0.02f, 0.02f, 1.0f };
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
     
     // Enable smooth shading (legacy Gouraud shading baseline) 
     glShadeModel(GL_SMOOTH);
@@ -68,6 +80,13 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     // Clamp pitch to prevent camera inversion (-89 to +89 degrees) 
     if (pitch > 89.0f) pitch = 89.0f;
     if (pitch < -89.0f) pitch = -89.0f;
+}
+
+void windowFocusCallback(GLFWwindow* window, int focused) {
+    if (focused) {
+        // Force GLFW to trap and hide the cursor inside the window 
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    }
 }
 
 void processInput(GLFWwindow* window) {
@@ -151,6 +170,153 @@ void drawSolidCube(float size) {
     glEnd();
 }
 
+// --- DYNAMIC TACTICAL FLASHLIGHT ---
+void setupTacticalFlashlight() {
+    GLfloat lightPos[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GLfloat lightDir[] = { 0.0f, 0.0f, -1.0f };
+
+    GLfloat diffuseLight[]  = { 0.9f, 0.9f, 0.85f, 1.0f };
+    GLfloat specularLight[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat ambientLight[]  = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+    glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, lightDir);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuseLight);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, specularLight);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, ambientLight);
+
+    // WIDENED CONE: 35-degree cutoff (70-degree total cone of illumination)
+    glLightf(GL_LIGHT0, GL_SPOT_CUTOFF, 35.0f);
+    
+    // Softer edge focus so the light fades smoothly across tiles
+    glLightf(GL_LIGHT0, GL_SPOT_EXPONENT, 8.0f);
+
+    // GENTLER ATTENUATION: Allows the beam to illuminate walls up to 10 meters away
+    glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
+    glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.02f);
+    glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.005f);
+}
+
+// --- PROCEDURAL ROOM GEOMETRY (SUBDIVIDED FOR PER-VERTEX LIGHTING) ---
+// Subdivides the 10x4x10 meter room into a 0.5m grid so legacy Gouraud shading 
+// has enough vertex density to cleanly render dynamic spotlight cones!
+void drawAbandonedRoom() {
+    float halfWidth = 5.0f;
+    float height = 4.0f;
+    float halfLength = 5.0f;
+    float step = 0.5f; // Subdivide every 0.5 meters for smooth light falloff
+
+    glBegin(GL_QUADS);
+        // 1. FLOOR (Normal pointing UP into the room: 0, 1, 0)
+        glColor3f(0.2f, 0.18f, 0.15f); // Dark rotting wood floor color
+        glNormal3f(0.0f, 1.0f, 0.0f);
+        for (float x = -halfWidth; x < halfWidth; x += step) {
+            for (float z = -halfLength; z < halfLength; z += step) {
+                glVertex3f(x, 0.0f, z + step);
+                glVertex3f(x + step, 0.0f, z + step);
+                glVertex3f(x + step, 0.0f, z);
+                glVertex3f(x, 0.0f, z);
+            }
+        }
+
+        // 2. CEILING (Normal pointing DOWN into the room: 0, -1, 0)
+        glColor3f(0.15f, 0.15f, 0.15f); // Stained dark ceiling
+        glNormal3f(0.0f, -1.0f, 0.0f);
+        for (float x = -halfWidth; x < halfWidth; x += step) {
+            for (float z = -halfLength; z < halfLength; z += step) {
+                glVertex3f(x, height, z);
+                glVertex3f(x + step, height, z);
+                glVertex3f(x + step, height, z + step);
+                glVertex3f(x, height, z + step);
+            }
+        }
+
+        // 3. BACK WALL (Normal pointing FORWARD: 0, 0, 1)
+        glColor3f(0.25f, 0.25f, 0.26f); // Desaturated peeling wallpaper
+        glNormal3f(0.0f, 0.0f, 1.0f);
+        for (float x = -halfWidth; x < halfWidth; x += step) {
+            for (float y = 0.0f; y < height; y += step) {
+                glVertex3f(x, y, -halfLength);
+                glVertex3f(x + step, y, -halfLength);
+                glVertex3f(x + step, y + step, -halfLength);
+                glVertex3f(x, y + step, -halfLength);
+            }
+        }
+
+        // 4. FRONT WALL (Normal pointing BACKWARD: 0, 0, -1)
+        glNormal3f(0.0f, 0.0f, -1.0f);
+        for (float x = -halfWidth; x < halfWidth; x += step) {
+            for (float y = 0.0f; y < height; y += step) {
+                glVertex3f(x, y + step, halfLength);
+                glVertex3f(x + step, y + step, halfLength);
+                glVertex3f(x + step, y, halfLength);
+                glVertex3f(x, y, halfLength);
+            }
+        }
+
+        // 5. LEFT WALL (Normal pointing RIGHT: 1, 0, 0)
+        glNormal3f(1.0f, 0.0f, 0.0f);
+        for (float z = -halfLength; z < halfLength; z += step) {
+            for (float y = 0.0f; y < height; y += step) {
+                glVertex3f(-halfWidth, y, z + step);
+                glVertex3f(-halfWidth, y, z);
+                glVertex3f(-halfWidth, y + step, z);
+                glVertex3f(-halfWidth, y + step, z + step);
+            }
+        }
+
+        // 6. RIGHT WALL (Normal pointing LEFT: -1, 0, 0)
+        glNormal3f(-1.0f, 0.0f, 0.0f);
+        for (float z = -halfLength; z < halfLength; z += step) {
+            for (float y = 0.0f; y < height; y += step) {
+                glVertex3f(halfWidth, y + step, z + step);
+                glVertex3f(halfWidth, y + step, z);
+                glVertex3f(halfWidth, y, z);
+                glVertex3f(halfWidth, y, z + step);
+            }
+        }
+    glEnd();
+}
+
+// --- HIERARCHICAL MODELING: DESK WITH INTERACTIVE DRAWER ---
+// Demonstrates glPushMatrix/glPopMatrix transformation hierarchies 
+void drawDeskWithDrawer(float drawerOffsetZ) {
+    glPushMatrix(); // [HIERARCHY LEVEL 1]: Save world space state 
+        
+        // Translate entire desk assembly to the back-right corner of the room
+        glTranslatef(2.0f, 0.8f, -3.5f);
+        
+        // Draw Desk Surface Frame (Parent Object)
+        glColor3f(0.3f, 0.2f, 0.1f); // Mahogany wood finish
+        glPushMatrix();
+            glScalef(1.6f, 0.1f, 0.8f);
+            drawSolidCube(1.0f);
+        glPopMatrix();
+
+        // Draw Desk Legs (Children of Desk Frame)
+        for(float x : {-0.75f, 0.75f}) {
+            for(float z : {-0.35f, 0.35f}) {
+                glPushMatrix();
+                    glTranslatef(x, -0.4f, z);
+                    glScalef(0.1f, 0.8f, 0.1f);
+                    drawSolidCube(1.0f);
+                glPopMatrix();
+            }
+        }
+
+        // [HIERARCHY LEVEL 2]: Interactive Drawer (Child of Desk Frame) 
+        glPushMatrix(); 
+            // Local translation offset modified dynamically when player pulls drawer open 
+            glTranslatef(0.0f, -0.2f, drawerOffsetZ); 
+            
+            glColor3f(0.25f, 0.15f, 0.08f); // Slightly darker wood for drawer
+            glScalef(0.8f, 0.25f, 0.7f);
+            drawSolidCube(1.0f);
+        glPopMatrix(); // Return to desk frame space 
+
+    glPopMatrix(); // Return to world space 
+}
+
 // Helper function to draw a reference grid so movement is visible
 void drawFloorGrid() {
     glColor3f(0.3f, 0.3f, 0.3f);
@@ -189,12 +355,7 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void windowFocusCallback(GLFWwindow* window, int focused) {
-    if (focused) {
-        // Force GLFW to trap and hide the cursor inside the window 
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    }
-}
+
 
 int main() {
     // 1. Initialize GLFW library
@@ -263,25 +424,33 @@ int main() {
         // --- RENDER PIPELINE ---
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
+        // 1. FORCE MODELVIEW MODE AND RESET STACK TO IDENTITY
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        // Calculate Target point for camera lens
+        // 2. CRITICAL FIX: Setup Tactical Flashlight ON THE IDENTITY MATRIX!
+        // When called before gluLookAt, I * (0,0,0,1) locks the light to Eye Space (0,0,0).
+        // The beam will now permanently follow the camera lens and rotation!
+        setupTacticalFlashlight();
+
+        // 3. CALCULATE CAMERA TARGET
         float radYaw = toRadians(yaw);
         float radPitch = toRadians(pitch);
         float targetX = camX + (cos(radYaw) * cos(radPitch));
         float targetY = camY + sin(radPitch);
         float targetZ = camZ + (sin(radYaw) * cos(radPitch));
         
-        // Apply camera transformation 
+        // 4. APPLY CAMERA VIEW MATRIX AFTER THE LIGHT IS BOUND
         gluLookAt(camX, camY, camZ,
                   targetX, targetY, targetZ,
                   0.0f, 1.0f, 0.0f);
-        
-        // Draw scene geometry
-        drawFloorGrid();
 
-        // Buffer Swap 
+        // 5. DRAW GEOMETRY
+        // The subdivided room and desk will now be dynamically illuminated by our camera beam!
+        drawAbandonedRoom();
+        drawDeskWithDrawer(0.2f);
+
+        // Buffer Swap
         glfwSwapBuffers(window);
     }
 
