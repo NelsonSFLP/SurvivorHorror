@@ -78,19 +78,20 @@ void DebrisSystem::render() const {
                 
                 // Draw a 0.1m splinter facing the camera
                 glBegin(GL_QUADS);
-                    glNormal3f(0.0f, 0.0f, 1.0f); // Catch flashlight illumination
-                    
+                    glNormal3f(0.0f, 0.0f, 1.0f); 
+    
+                    // We leave the UV coordinates alone so it maps a visible chunk of the texture
                     glTexCoord2f(pool[i].uOffset, pool[i].vOffset); 
-                    glVertex3f(-0.05f, -0.05f, 0.0f);
-                    
+                    glVertex3f(-0.01f, -0.01f, 0.0f); // <-- Changed to -0.01f
+    
                     glTexCoord2f(pool[i].uOffset + 0.1f, pool[i].vOffset); 
-                    glVertex3f(0.05f, -0.05f, 0.0f);
-                    
+                    glVertex3f(0.01f, -0.01f, 0.0f);  // <-- Changed to 0.01f and -0.01f
+    
                     glTexCoord2f(pool[i].uOffset + 0.1f, pool[i].vOffset + 0.1f); 
-                    glVertex3f(0.05f, 0.05f, 0.0f);
-                    
+                    glVertex3f(0.01f, 0.01f, 0.0f);   // <-- Changed to 0.01f
+    
                     glTexCoord2f(pool[i].uOffset, pool[i].vOffset + 0.1f); 
-                    glVertex3f(-0.05f, 0.05f, 0.0f);
+                    glVertex3f(-0.01f, 0.01f, 0.0f);  // <-- Changed to -0.01f and 0.01f
                 glEnd();
             glPopMatrix();
         }
