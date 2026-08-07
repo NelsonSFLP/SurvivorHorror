@@ -14,6 +14,30 @@ Engine::~Engine() {
     std::cout << "[SYSTEM] Engine terminated cleanly." << std::endl;
 }
 
+void Engine::handleInteraction() {
+    Ray ray;
+    camera.getPosition(ray.origin[0], ray.origin[1], ray.origin[2]);
+    camera.getForwardVector(ray.direction[0], ray.direction[1], ray.direction[2]);
+
+    scene.tryInteract(ray);
+}
+
+// Triggers precisely once per key press, preventing machine-gun-style rapid fire interactions
+static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    // Handle Interaction ('E' key)
+    if (key == GLFW_KEY_E && action == GLFW_PRESS) {
+        Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
+        if (engine) {
+            engine->handleInteraction();
+        }
+    }
+
+    // Handle Window Close ('ESC' key)
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+}
+
 bool Engine::init() {
     if (!glfwInit()) {
         std::cerr << "[ERROR] Failed to initialize GLFW." << std::endl;
@@ -84,6 +108,9 @@ int Engine::run() {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
+        // Mouse callback
+        glfwSetKeyCallback(window, keyCallback);
+
         // 1. Bind tactical spotlight in Eye Space (before camera transformation)
         scene.setupTacticalFlashlight();
 
@@ -91,7 +118,13 @@ int Engine::run() {
         camera.applyViewMatrix();
 
         // 3. Render world geometry
-        scene.render(0.2f); // Drawer open offset
+        scene.render(); 
+
+        // 4. Physics update
+        scene.updatePhysics(deltaTime);
+
+        //overlay for interactive objects
+        scene.renderOverlay();
 
         glfwSwapBuffers(window);
     }

@@ -17,7 +17,15 @@ private:
     // Helper methods for procedural geometry
     void drawSolidCube(float size);
     void drawAbandonedRoom();
-    void drawDeskWithDrawer(float drawerOffsetZ);
+    void drawDeskWithDrawer();
+
+    //drawer manipulation 
+    bool isDrawerOpen;
+    float currentDrawerZ; // Smooth animation offset
+
+    //note inspection
+    bool isInspectingNote;
+    void drawNote();
 
 public:
     Scene();
@@ -32,7 +40,14 @@ public:
     void setupTacticalFlashlight();
     
     // Renders all world geometry 
-    void render(float drawerOffsetZ = 0.2f);
+    void render();
+
+    //interation functions
+    void updatePhysics(float deltaTime);
+    bool tryInteract(const Ray& cameraRay);
+
+    //overlay for interactive objects
+    void renderOverlay();
 };
 
 #endif // SCENE_H
