@@ -22,7 +22,25 @@ void Engine::handleInteraction() {
     scene.tryInteract(ray);
 }
 
-// Triggers precisely once per key press, preventing machine-gun-style rapid fire interactions
+void Engine::handleShooting() {
+    Ray ray;
+    camera.getPosition(ray.origin[0], ray.origin[1], ray.origin[2]);
+    camera.getForwardVector(ray.direction[0], ray.direction[1], ray.direction[2]);
+
+    scene.shoot(ray);
+}
+
+static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    // Handle Shotgun Blast (Left Mouse Button)
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
+        if (engine) {
+            engine->handleShooting();
+        }
+    }
+}
+
+// Triggers precisely once per key press, preventing rapid interactions
 static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     // Handle Interaction ('E' key)
     if (key == GLFW_KEY_E && action == GLFW_PRESS) {
@@ -57,8 +75,6 @@ bool Engine::init() {
 
     glfwMakeContextCurrent(window);
 
-    // --- THE C++ CAPTURE TRICK ---
-    // Attach 'this' class instance directly to the GLFW window memory
     glfwSetWindowUserPointer(window, this);
 
     // Register static callbacks
@@ -108,8 +124,11 @@ int Engine::run() {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        // Mouse callback
+        // Keyboard callback
         glfwSetKeyCallback(window, keyCallback);
+
+        // Mouse callback
+        glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
         // 1. Bind tactical spotlight in Eye Space (before camera transformation)
         scene.setupTacticalFlashlight();

@@ -4,8 +4,42 @@ Scene::Scene() : texFloor(0), texWall(0), texWood(0), isDrawerOpen(false), curre
 
 void Scene::updatePhysics(float deltaTime) {
     // Smoothly animate the drawer sliding open (to 0.5f) or closed (to 0.0f)
-    float targetZ = isDrawerOpen ? 0.5f : 0.0f;
-    currentDrawerZ += (targetZ - currentDrawerZ) * 5.0f * deltaTime;
+    if (isDrawerOpen && currentDrawerZ < 0.5f) {
+        currentDrawerZ += 2.0f * deltaTime;
+        if (currentDrawerZ > 0.5f) currentDrawerZ = 0.5f;
+    } else if (!isDrawerOpen && currentDrawerZ > 0.0f) {
+        currentDrawerZ -= 2.0f * deltaTime;
+        if (currentDrawerZ < 0.0f) currentDrawerZ = 0.0f;
+    }
+
+    debris.update(deltaTime);
+}
+
+void Scene::shoot(const Ray& cameraRay) {
+    float hitDistance = 0.0f;
+    
+    // Define the desk's physical boundaries
+    float deskMinX = 2.0f - 0.8f; float deskMaxX = 2.0f + 0.8f;
+    float deskMinY = 0.8f - 0.1f; float deskMaxY = 0.8f + 0.1f; 
+    float deskMinZ = -3.5f - 0.4f; float deskMaxZ = -3.5f + 0.4f;
+
+    AABB deskBox;
+    deskBox.min[0] = deskMinX; deskBox.max[0] = deskMaxX;
+    deskBox.min[1] = deskMinY; deskBox.max[1] = deskMaxY;
+    deskBox.min[2] = deskMinZ; deskBox.max[2] = deskMaxZ;
+
+    // Check if the shotgun blast hit the desk
+    if (checkRayAABBIntersection(cameraRay, deskBox, hitDistance)) {
+        // Calculate the exact 3D impact coordinate in the world
+        float hitX = cameraRay.origin[0] + cameraRay.direction[0] * hitDistance;
+        float hitY = cameraRay.origin[1] + cameraRay.direction[1] * hitDistance;
+        float hitZ = cameraRay.origin[2] + cameraRay.direction[2] * hitDistance;
+
+        // Spawn 30 wooden splinters at the impact site!
+        debris.spawnExplosion(hitX, hitY, hitZ, texWood);
+        
+        std::cout << "[SYSTEM] SHOT FIRED! Desk hit at distance: " << hitDistance << "m" << std::endl;
+    }
 }
 
 bool Scene::isWalkable(float targetX, float targetZ) const {
@@ -386,4 +420,5 @@ void Scene::drawDeskWithDrawer() {
 void Scene::render() {
     drawAbandonedRoom();
     drawDeskWithDrawer();
+    debris.render();
 }

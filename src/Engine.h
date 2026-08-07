@@ -47,6 +47,7 @@ public:
 
     // Deals with player interactions 
     void handleInteraction();
+    void handleShooting();
 };
 
 #endif // ENGINE_H

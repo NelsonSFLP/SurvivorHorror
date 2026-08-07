@@ -3,6 +3,7 @@
 
 #include "Utils.h"
 #include "TextureManager.h"
+#include "Debris.h"
 
 class Scene {
 private:
@@ -10,9 +11,7 @@ private:
     TextureManager texManager;
     
     // Texture IDs
-    GLuint texFloor; 
-    GLuint texWall;
-    GLuint texWood;
+    GLuint texFloor, texWall, texWood; 
 
     // Helper methods for procedural geometry
     void drawSolidCube(float size);
@@ -26,6 +25,9 @@ private:
     //note inspection
     bool isInspectingNote;
     void drawNote();
+
+    // Debri pool
+    DebrisSystem debris;
 
 public:
     Scene();
@@ -45,6 +47,7 @@ public:
     // Interation functions
     void updatePhysics(float deltaTime);
     bool tryInteract(const Ray& cameraRay);
+    void shoot(const Ray& cameraRay);
 
     // Overlay for interactive objects
     void renderOverlay();

@@ -19,6 +19,8 @@ set(SOURCES
     src/Engine.cpp
     src/Camera.cpp
     src/Scene.cpp
+    src/TextureManager.cpp
+    src/Debris.cpp
 )
 
 # Create the executable
