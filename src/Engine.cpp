@@ -51,6 +51,7 @@ bool Engine::init() {
 
     // Initialize lighting and initial projection matrix
     scene.initLighting();
+    scene.loadAssets();
     framebufferSizeCallback(window, width, height);
     glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
 
