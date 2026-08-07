@@ -44,6 +44,9 @@ public:
 
     // Executes the core game loop
     int run();
+
+    // Deals with player interactions 
+    void handleInteraction();
 };
 
 #endif // ENGINE_H

@@ -8,6 +8,34 @@ void Scene::updatePhysics(float deltaTime) {
     currentDrawerZ += (targetZ - currentDrawerZ) * 5.0f * deltaTime;
 }
 
+bool Scene::isWalkable(float targetX, float targetZ) const {
+    // 1. The Player's Physical Size
+    float playerRadius = 0.3f; // 0.6 meters wide in total
+
+    // 2. Room Boundary Collision (10x10 room means coordinates range from -5.0f to +5.0f)
+    if (targetX - playerRadius < -5.0f || targetX + playerRadius > 5.0f) return false;
+    if (targetZ - playerRadius < -5.0f || targetZ + playerRadius > 5.0f) return false;
+
+    // 3. Desk Collision
+    // Desk center is (2.0, -3.5). The scale is (1.6, 0.8). Extents are half the scale.
+    float deskMinX = 2.0f - 0.8f; float deskMaxX = 2.0f + 0.8f;
+    float deskMinZ = -3.5f - 0.4f; float deskMaxZ = -3.5f + 0.4f;
+
+    // Calculate Player's future AABB boundaries
+    float playerMinX = targetX - playerRadius; float playerMaxX = targetX + playerRadius;
+    float playerMinZ = targetZ - playerRadius; float playerMaxZ = targetZ + playerRadius;
+
+    // 2D AABB Overlap check (Slab Method on the X-Z plane)
+    bool overlapsX = (playerMinX <= deskMaxX && playerMaxX >= deskMinX);
+    bool overlapsZ = (playerMinZ <= deskMaxZ && playerMaxZ >= deskMinZ);
+
+    if (overlapsX && overlapsZ) {
+        return false; // Hitting the desk!
+    }
+
+    return true; // The path is clear
+}
+
 bool Scene::tryInteract(const Ray& cameraRay) {
     // 1. If we are currently reading the note, 'E' puts it away
     if (isInspectingNote) {

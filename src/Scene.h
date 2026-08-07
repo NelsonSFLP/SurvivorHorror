@@ -33,7 +33,7 @@ public:
     // Initializes fixed-function lighting state (called once at startup)
     void initLighting();
 
-    //Loads the image files into VRAM in the start
+    // Loads the image files into VRAM in the start
     void loadAssets();
     
     // Configures GL_LIGHT0 in Eye Space 
@@ -42,12 +42,15 @@ public:
     // Renders all world geometry 
     void render();
 
-    //interation functions
+    // Interation functions
     void updatePhysics(float deltaTime);
     bool tryInteract(const Ray& cameraRay);
 
-    //overlay for interactive objects
+    // Overlay for interactive objects
     void renderOverlay();
+
+    // Checking player walkable zone
+    bool isWalkable(float targetX, float targetZ) const;
 };
 
 #endif // SCENE_H

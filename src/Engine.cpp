@@ -2,7 +2,7 @@
 
 Engine::Engine(int width, int height, const char* title)
     : window(nullptr), width(width), height(height), title(title),
-      camera(0.0f, 1.7f, 5.0f),
+      camera(0.0f, 1.7f, 3.0f),
       deltaTime(0.0f), lastFrame(0.0f),
       lastMouseX(width / 2.0), lastMouseY(height / 2.0), firstMouse(true) {}
 
@@ -90,7 +90,7 @@ void Engine::processInput() {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    camera.processKeyboard(window, deltaTime);
+    camera.processKeyboard(window, deltaTime, scene);
 }
 
 int Engine::run() {
