@@ -11,7 +11,7 @@ void Scene::updatePhysics(float deltaTime) {
         currentDrawerZ -= 2.0f * deltaTime;
         if (currentDrawerZ < 0.0f) currentDrawerZ = 0.0f;
     }
-
+    cursedSigil.update(deltaTime);
     debris.update(deltaTime);
 }
 
@@ -93,6 +93,7 @@ bool Scene::tryInteract(const Ray& cameraRay) {
 
         if (checkRayAABBIntersection(cameraRay, noteBox, hitDistance) && hitDistance <= 3.0f) {
             isInspectingNote = true;
+            cursedSigil.startAnimation();
             std::cout << "[SYSTEM] Inspecting Note!" << std::endl;
             return true; // Stop here so we don't also accidentally close the drawer!
         }
@@ -154,6 +155,7 @@ void Scene::renderOverlay() {
         glRotatef(-5.0f, 0.0f, 0.0f, 1.0f);
 
         drawNote();
+        cursedSigil.render();
     glPopMatrix();
 }
 

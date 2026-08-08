@@ -4,6 +4,7 @@
 #include "Utils.h"
 #include "TextureManager.h"
 #include "Debris.h"
+#include "Sigil.h"
 
 class Scene {
 private:
@@ -28,6 +29,9 @@ private:
 
     // Debri pool
     DebrisSystem debris;
+
+    // Sigil using bezier curves
+    Sigil cursedSigil;
 
 public:
     Scene();

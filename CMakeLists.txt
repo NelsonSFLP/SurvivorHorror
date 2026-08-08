@@ -21,6 +21,7 @@ set(SOURCES
     src/Scene.cpp
     src/TextureManager.cpp
     src/Debris.cpp
+    src/Sigil.cpp
 )
 
 # Create the executable
