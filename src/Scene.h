@@ -6,6 +6,8 @@
 #include "Debris.h"
 #include "Sigil.h"
 
+
+
 class Scene {
 private:
     // texture loader and VRAM cache
@@ -13,6 +15,17 @@ private:
     
     // Texture IDs
     GLuint texFloor, texWall, texWood, texGrass, texDirt, texSky; 
+
+    // Drawer structure
+    struct PuzzleDrawer {
+    float x, z;
+    float yaw;             // Which way the desk faces
+    bool isOpen;           // Is the drawer slid out?
+    float currentZOffset;  // The physical sliding animation state
+    bool isNoteInspected;  // Is the player reading this specific letter?
+    };
+
+    PuzzleDrawer drawers[5];
 
     // Helper methods for procedural geometry
     float getTerrainHeight(float x, float z) const;
@@ -24,7 +37,7 @@ private:
     void drawLowPolyCylinder(float radius, float length);
     void drawWindowWall(float x, float z, float widthX, float depthZ, float sillHeight = 1.0f, float lintelHeight = 1.0f);
     void drawEnvironment();
-    void drawDeskWithDrawer();
+    void drawPuzzleDrawer(PuzzleDrawer& drawer);
     void drawSkybox(float camX, float camY, float camZ);
 
     //drawer manipulation 
@@ -59,6 +72,24 @@ public:
     
     // Renders all world geometry 
     void render(float camX, float camY, float camZ);
+
+    // The Locked Chest
+    float chestX, chestZ, chestYaw;
+    float chestLidAngle;        // Animates from 0.0f (closed) to -100.0f (open)
+    bool isChestUnlocked;
+    std::string currentCode;    // Stores the 4-digit input (e.g., "045")
+
+    // Keypad interaction state and solution
+    bool isChestKeypadActive;
+    std::string correctCode;
+
+    // Shotgun collection state
+    bool isShotgunCollected;
+    bool justPickedUpShotgun;
+
+    void drawChest();
+    void renderKeypadUI(int width, int height);
+    void drawViewModel();
 
     // Interation functions
     void updatePhysics(float deltaTime);

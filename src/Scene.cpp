@@ -1,15 +1,46 @@
 #include "Scene.h"
 
-Scene::Scene() : texFloor(0), texWall(0), texWood(0), isDrawerOpen(false), currentDrawerZ(0.0f), isInspectingNote(false) {}
+Scene::Scene() : texFloor(0), texWall(0), texWood(0), isDrawerOpen(false), currentDrawerZ(0.0f), isInspectingNote(false) {
+    // 2 Drawers in the Main Room (Sala Principal: Z from -2 to 12)
+    drawers[0] = { -10.0f, 5.0f,  90.0f, false, 0.0f, false }; // Placed against the West wall
+    drawers[1] = {  10.0f, 5.0f, -90.0f, false, 0.0f, false }; // Placed against the East wall
+
+    // 1 Drawer in Secondary Room 1 (Quarto Esquerdo: X=-12 to -2, Z=-12 to -2)
+    drawers[2] = { -10.0f, -10.0f, 90.0f, false, 0.0f, false }; 
+
+    // 1 Drawer in Secondary Room 2 (Quarto Direito: X=2 to 12, Z=-12 to -2)
+    drawers[3] = {  10.0f, -10.0f, -90.0f, false, 0.0f, false }; 
+
+    // 1 Drawer in Secondary Room 3 (Corredor Central: X=-2 to 2, Z=-12 to -2)
+    drawers[4] = {   0.0f, -10.0f,   0.0f, false, 0.0f, false }; // Placed at the very back wall
+    
+    // Chest located in the main room
+    chestX = 3.0f; 
+    chestZ = 11.0f; 
+    chestYaw = 180.0f; // Facing into the room
+    chestLidAngle = 0.0f;
+    isChestUnlocked = false;
+    currentCode = "";
+    isChestKeypadActive = false;
+    correctCode = "1234"; // Placeholder solution!
+}
 
 void Scene::updatePhysics(float deltaTime) {
-    // Smoothly animate the drawer sliding open (to 0.5f) or closed (to 0.0f)
-    if (isDrawerOpen && currentDrawerZ < 0.5f) {
-        currentDrawerZ += 2.0f * deltaTime;
-        if (currentDrawerZ > 0.5f) currentDrawerZ = 0.5f;
-    } else if (!isDrawerOpen && currentDrawerZ > 0.0f) {
-        currentDrawerZ -= 2.0f * deltaTime;
-        if (currentDrawerZ < 0.0f) currentDrawerZ = 0.0f;
+    // Smoothly animate the drawer sliding open or closed
+    for (int i = 0; i < 5; i++) {
+        if (drawers[i].isOpen) {
+            drawers[i].currentZOffset += 2.0f * deltaTime;
+            if (drawers[i].currentZOffset > 0.5f) drawers[i].currentZOffset = 0.5f;
+        } else {
+            drawers[i].currentZOffset -= 2.0f * deltaTime;
+            if (drawers[i].currentZOffset < 0.0f) drawers[i].currentZOffset = 0.0f;
+        }
+    }
+
+    // Smoothly animate the chest open
+    if (isChestUnlocked) {
+        chestLidAngle -= 45.0f * deltaTime; // Swing open
+        if (chestLidAngle < -110.0f) chestLidAngle = -110.0f;
     }
     cursedSigil.update(deltaTime);
     debris.update(deltaTime);
@@ -83,57 +114,124 @@ bool Scene::isWalkable(float targetX, float targetZ) const {
     if (hitWall(2.0f, -10.0f, 0.5f, 4.0f)) return false;   // Div V R 1
     if (hitWall(2.0f, -4.0f, 0.5f, 4.0f)) return false;    // Div V R 2
 
-    // Check Desk Collision
-    if (hitWall(2.0f, -3.5f, 1.6f, 0.8f)) return false;
+    // Check collision for ALL 5 Desks
+    for (int i = 0; i < 5; i++) {
+        float w = 1.6f;
+        float d = 0.8f;
+        // Swap width and depth if the desk is rotated against the side walls
+        if (drawers[i].yaw == 90.0f || drawers[i].yaw == -90.0f) {
+            w = 0.8f;
+            d = 1.6f;
+        }
+        if (hitWall(drawers[i].x, drawers[i].z, w, d)) return false;
+    }
 
+    if (hitWall(chestX, chestZ, 0.8f, 0.5f)) return false;
     return true; // Safe to walk!
 }
 
 bool Scene::tryInteract(const Ray& cameraRay) {
-    // 1. If we are currently reading the note, 'E' puts it away
-    if (isInspectingNote) {
-        isInspectingNote = false;
-        std::cout << "[SYSTEM] Put note away." << std::endl;
-        return true;
-    }
-
-    float hitDistance = 0.0f;
-
-    // 2. If the drawer is open, check if we clicked the note inside it
-    if (isDrawerOpen) {
-        float noteWorldX = 2.0f;
-        float noteWorldY = 0.8f - 0.2f - 0.1f; // Desk height - drawer offset - note offset
-        float noteWorldZ = -3.5f + currentDrawerZ;
-
-        AABB noteBox;
-        noteBox.min[0] = noteWorldX - 0.2f; noteBox.max[0] = noteWorldX + 0.2f;
-        noteBox.min[1] = noteWorldY - 0.05f; noteBox.max[1] = noteWorldY + 0.05f;
-        noteBox.min[2] = noteWorldZ - 0.3f; noteBox.max[2] = noteWorldZ + 0.3f;
-
-        if (checkRayAABBIntersection(cameraRay, noteBox, hitDistance) && hitDistance <= 3.0f) {
-            isInspectingNote = true;
-            cursedSigil.startAnimation();
-            std::cout << "[SYSTEM] Inspecting Note!" << std::endl;
-            return true; // Stop here so we don't also accidentally close the drawer!
+    // Put away active note
+    for (int i = 0; i < 5; i++) {
+        if (drawers[i].isNoteInspected) {
+            drawers[i].isNoteInspected = false;
+            return true;
         }
     }
 
-    // 3. Fallback: Check if we clicked the drawer itself
-    float worldCenterX = 2.0f;
-    float worldCenterY = 0.8f - 0.2f;
-    float worldCenterZ = -3.5f + currentDrawerZ;
+    float closestHit = 9999.0f;
+    int hitIndex = -1;
+    bool hitNote = false; 
 
-    AABB drawerBox;
-    drawerBox.min[0] = worldCenterX - 0.4f; drawerBox.max[0] = worldCenterX + 0.4f;
-    drawerBox.min[1] = worldCenterY - 0.125f; drawerBox.max[1] = worldCenterY + 0.125f;
-    drawerBox.min[2] = worldCenterZ - 0.35f; drawerBox.max[2] = worldCenterZ + 0.35f;
+    for (int i = 0; i < 5; i++) {
+        // DESK COLLISION (Toggles Open/Close)
+        AABB deskBox = { drawers[i].x - 0.8f, 0.0f, drawers[i].z - 0.8f,
+                         drawers[i].x + 0.8f, 1.2f, drawers[i].z + 0.8f };
+        
+        float tEntry;
+        if (checkRayAABBIntersection(cameraRay, deskBox, tEntry)) {
+            if (tEntry > 0.0f && tEntry < 3.0f && tEntry < closestHit) {
+                closestHit = tEntry;
+                hitIndex = i;
+                hitNote = false;
+            }
+        }
 
-    if (checkRayAABBIntersection(cameraRay, drawerBox, hitDistance) && hitDistance <= 3.0f) {
-        isDrawerOpen = !isDrawerOpen;
-        std::cout << "[SYSTEM] Drawer Interacted! Distance: " << hitDistance << "m" << std::endl;
+        // NOTE COLLISION (Only accessible when drawer is slid open!)
+        if (drawers[i].isOpen && drawers[i].currentZOffset > 0.3f) {
+            // Calculate physical location of the extended drawer based on desk rotation
+            float radYaw = drawers[i].yaw * (3.14159265f / 180.0f);
+            float dirX = sin(radYaw);
+            float dirZ = cos(radYaw);
+            
+            float noteX = drawers[i].x + (dirX * drawers[i].currentZOffset);
+            float noteZ = drawers[i].z + (dirZ * drawers[i].currentZOffset);
+
+            // Small AABB just for the extended drawer
+            AABB noteBox = { noteX - 0.6f, 0.2f, noteZ - 0.6f,
+                             noteX + 0.6f, 1.2f, noteZ + 0.6f };
+
+            if (checkRayAABBIntersection(cameraRay, noteBox, tEntry)) {
+                if (tEntry > 0.0f && tEntry < 3.0f && tEntry < closestHit) {
+                    closestHit = tEntry;
+                    hitIndex = i;
+                    hitNote = true; 
+                }
+            }
+        }
+    }
+
+    justPickedUpShotgun = false;
+
+    // CHEST COLLISION
+    // Create a generous 1x1 meter hitbox around the chest
+    AABB chestBox = { chestX - 0.5f, 0.0f, chestZ - 0.5f,
+                      chestX + 0.5f, 1.0f, chestZ + 0.5f };
+                      
+    if (!isChestUnlocked) {
+        AABB chestBox = { chestX - 0.5f, 0.0f, chestZ - 0.5f,
+                          chestX + 0.5f, 1.0f, chestZ + 0.5f };
+                          
+        float tEntryChest;
+        if (checkRayAABBIntersection(cameraRay, chestBox, tEntryChest)) {
+            if (tEntryChest > 0.0f && tEntryChest < 3.0f && tEntryChest < closestHit) {
+                closestHit = tEntryChest;
+                hitIndex = 999; // Special ID for the chest
+                hitNote = false;
+            }
+        }
+    }
+
+    // SHOTGUN COLLISION (Only accessible if chest is open and weapon isn't taken)
+    if (isChestUnlocked && chestLidAngle < -45.0f && !isShotgunCollected) {
+        AABB shotgunBox = { chestX - 0.5f, 0.0f, chestZ - 0.5f,
+                            chestX + 0.5f, 0.8f, chestZ + 0.5f };
+                            
+        float tEntryShotgun;
+        if (checkRayAABBIntersection(cameraRay, shotgunBox, tEntryShotgun)) {
+            if (tEntryShotgun > 0.0f && tEntryShotgun < 3.0f && tEntryShotgun < closestHit) {
+                closestHit = tEntryShotgun;
+                hitIndex = 888; // Special ID for the Shotgun
+                hitNote = false;
+            }
+        }
+    }
+
+    // Process the closest interaction
+    if (hitIndex != -1) {
+        if (hitIndex == 888) {
+            isShotgunCollected = true;
+            justPickedUpShotgun = true; // Signal the engine!
+        } else if (hitIndex == 999) {
+            if (!isChestUnlocked) isChestKeypadActive = true;
+        } else if (hitNote) {
+            drawers[hitIndex].isNoteInspected = true;
+        } else {
+            drawers[hitIndex].isOpen = !drawers[hitIndex].isOpen;
+        }
         return true;
     }
-    
+
     return false;
 }
 
@@ -154,28 +252,41 @@ void Scene::drawNote() {
 }
 
 void Scene::renderOverlay() {
-    if (!isInspectingNote) return;
+    for (int i = 0; i < 5; i++) {
+        if (drawers[i].isNoteInspected) {
+            // Wipe depth buffer so it overlays everything in the world
+            glClear(GL_DEPTH_BUFFER_BIT); 
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
 
-    // THE MAGIC TRICK: Wipe the depth buffer so the note renders over everything
-    glClear(GL_DEPTH_BUFFER_BIT);
+            // Disable lighting and textures so the note is bright and readable
+            glDisable(GL_LIGHTING);
+            glDisable(GL_TEXTURE_2D);
 
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-        // Reset to Eye Space (Camera coordinates)
-        glLoadIdentity(); 
+            glPushMatrix();
+                // 1. Move it 0.5 meters directly in front of the camera lens
+                glTranslatef(0.0f, 0.0f, -0.5f);
 
-        // Move 0.6 meters directly in front of the camera lens, lowered slightly
-        glTranslatef(0.0f, -0.1f, -0.6f);
+                // 2. THE GEOMETRY FIX: Tilt the paper 90 degrees upward so it faces the screen!
+                glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
 
-        // Tilt the paper up 60 degrees to face the reader
-        glRotatef(60.0f, 1.0f, 0.0f, 0.0f);
-        
-        // Add a slight natural tilt (like holding it in one hand)
-        glRotatef(-5.0f, 0.0f, 0.0f, 1.0f);
+                // 3. Draw the physical sheet of paper
+                glScalef(0.4f, 0.02f, 0.5f);
+                glColor3f(0.8f, 0.8f, 0.7f); // Aged paper color
+                drawSolidCube(1.0f);
+            glPopMatrix();
 
-        drawNote();
-        cursedSigil.render();
-    glPopMatrix();
+            // Restore engine states for the next frame
+            glEnable(GL_TEXTURE_2D);
+            glEnable(GL_LIGHTING);
+            glColor3f(1.0f, 1.0f, 1.0f);
+
+            // If you kept the Bézier sigil from earlier, you can call it here!
+            cursedSigil.render();
+
+            return; // Only draw one note at a time
+        }
+    }
 }
 
 void Scene::initLighting() {
@@ -766,14 +877,16 @@ void Scene::drawEnvironment() {
     glDisable(GL_TEXTURE_2D);
 }
 
-void Scene::drawDeskWithDrawer() {
+void Scene::drawPuzzleDrawer(PuzzleDrawer& drawer) {
     glEnable(GL_TEXTURE_2D);
     texManager.bindTexture(texWood);
     glColor3f(1.0f, 1.0f, 1.0f);
-    
+
     glPushMatrix();
-        glTranslatef(2.0f, 0.8f, -3.5f);
-        
+        glTranslatef(drawer.x, 0.0f, drawer.z);
+        glRotatef(drawer.yaw, 0.0f, 1.0f, 0.0f); 
+        glTranslatef(0.0f, 0.8f, 0.0f);
+
         // Desk Frame
         glPushMatrix();
             glScalef(1.6f, 0.1f, 0.8f);
@@ -792,59 +905,31 @@ void Scene::drawDeskWithDrawer() {
         }
 
         // Interactive Drawer Child Node
-        glPushMatrix(); 
-            glTranslatef(0.0f, -0.2f, currentDrawerZ);
-            glScalef(0.8f, 0.25f, 0.7f);
+        glPushMatrix();
+            glTranslatef(0.0f, -0.2f, drawer.currentZOffset);
             
-            // --- NEW DRAWER GEOMETRY (5 Panels) ---
-            // Bottom panel
-            glPushMatrix();
-                glTranslatef(0.0f, -0.45f, 0.0f);
-                glScalef(1.0f, 0.1f, 1.0f);
-                drawSolidCube(1.0f);
-            glPopMatrix();
-            
-            // Front panel
-            glPushMatrix();
-                glTranslatef(0.0f, 0.0f, 0.45f);
-                glScalef(1.0f, 1.0f, 0.1f);
-                drawSolidCube(1.0f);
-            glPopMatrix();
-            
-            // Back panel
-            glPushMatrix();
-                glTranslatef(0.0f, 0.0f, -0.45f);
-                glScalef(1.0f, 1.0f, 0.1f);
-                drawSolidCube(1.0f);
-            glPopMatrix();
-            
-            // Left panel
-            glPushMatrix();
-                glTranslatef(-0.45f, 0.0f, 0.0f);
-                glScalef(0.1f, 1.0f, 1.0f);
-                drawSolidCube(1.0f);
-            glPopMatrix();
-            
-            // Right panel
-            glPushMatrix();
-                glTranslatef(0.45f, 0.0f, 0.0f);
-                glScalef(0.1f, 1.0f, 1.0f);
-                drawSolidCube(1.0f);
-            glPopMatrix();
-            // --------------------------------------
-            
-            if (!isInspectingNote) {
+            // 5-PANEL HOLLOW DRAWER (Replaces the solid slab)
+            glPushMatrix(); glTranslatef(0.0f, -0.1f, 0.0f); glScalef(0.7f, 0.05f, 0.7f); drawSolidCube(1.0f); glPopMatrix(); // Floor
+            glPushMatrix(); glTranslatef(0.0f, 0.0f, 0.325f); glScalef(0.8f, 0.25f, 0.05f); drawSolidCube(1.0f); glPopMatrix(); // Front
+            glPushMatrix(); glTranslatef(0.0f, 0.0f, -0.325f); glScalef(0.7f, 0.2f, 0.05f); drawSolidCube(1.0f); glPopMatrix(); // Back
+            glPushMatrix(); glTranslatef(-0.35f, 0.0f, 0.0f); glScalef(0.05f, 0.2f, 0.6f); drawSolidCube(1.0f); glPopMatrix(); // Left
+            glPushMatrix(); glTranslatef(0.35f, 0.0f, 0.0f); glScalef(0.05f, 0.2f, 0.6f); drawSolidCube(1.0f); glPopMatrix(); // Right
+
+            // The Note
+            if (!drawer.isNoteInspected) {
+                glDisable(GL_TEXTURE_2D);
                 glPushMatrix();
-                    // Counteract the drawer's scale to keep the note normal size
-                    glScalef(1.0f / 0.8f, 1.0f / 0.25f, 1.0f / 0.7f);
-                    // Place it flat on the bottom of the drawer interior
-                    glTranslatef(0.0f, -0.09f, 0.0f); 
-                    drawNote();
+                    glTranslatef(0.0f, -0.07f, 0.0f); // Hover just above the new bottom floor
+                    glScalef(0.4f, 0.02f, 0.5f);
+                    glColor3f(0.8f, 0.8f, 0.7f); // Aged paper color
+                    drawSolidCube(1.0f);
+                    glColor3f(1.0f, 1.0f, 1.0f); // Reset color
                 glPopMatrix();
+                glEnable(GL_TEXTURE_2D);
             }
         glPopMatrix();
+        
     glPopMatrix();
-
     glDisable(GL_TEXTURE_2D);
 }
 
@@ -905,6 +990,189 @@ void Scene::drawSkybox(float camX, float camY, float camZ) {
     glPopMatrix();
 }
 
+void Scene::drawChest() {
+    glPushMatrix();
+        glTranslatef(chestX, 0.0f, chestZ);
+        glRotatef(chestYaw, 0.0f, 1.0f, 0.0f);
+
+        // 1. The Hollow Chest Base (5 Panels)
+        glEnable(GL_TEXTURE_2D);
+        texManager.bindTexture(texWood);
+        glColor3f(0.6f, 0.4f, 0.3f); 
+        
+        glPushMatrix();
+            glTranslatef(0.0f, 0.25f, 0.0f); // Center of the base
+            
+            // Floor
+            glPushMatrix(); glTranslatef(0.0f, -0.225f, 0.0f); glScalef(0.8f, 0.05f, 0.5f); drawSolidCube(1.0f); glPopMatrix();
+            // Left Wall
+            glPushMatrix(); glTranslatef(-0.375f, 0.0f, 0.0f); glScalef(0.05f, 0.5f, 0.5f); drawSolidCube(1.0f); glPopMatrix();
+            // Right Wall
+            glPushMatrix(); glTranslatef(0.375f, 0.0f, 0.0f); glScalef(0.05f, 0.5f, 0.5f); drawSolidCube(1.0f); glPopMatrix();
+            // Front Wall
+            glPushMatrix(); glTranslatef(0.0f, 0.0f, 0.225f); glScalef(0.7f, 0.5f, 0.05f); drawSolidCube(1.0f); glPopMatrix();
+            // Back Wall
+            glPushMatrix(); glTranslatef(0.0f, 0.0f, -0.225f); glScalef(0.7f, 0.5f, 0.05f); drawSolidCube(1.0f); glPopMatrix();
+        glPopMatrix();
+
+        // 2. The Hinged Lid
+        glPushMatrix();
+            glTranslatef(0.0f, 0.5f, -0.25f);
+            glRotatef(chestLidAngle, 1.0f, 0.0f, 0.0f);
+            glTranslatef(0.0f, 0.1f, 0.25f);
+            glScalef(0.8f, 0.2f, 0.5f);
+            drawSolidCube(1.0f);
+        glPopMatrix();
+
+        // 3. The Electronic Keypad
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.2f, 0.2f, 0.2f); 
+        glPushMatrix();
+            glTranslatef(0.0f, 0.35f, 0.26f); 
+            glScalef(0.15f, 0.2f, 0.05f);
+            drawSolidCube(1.0f);
+        glPopMatrix();
+        
+        // 4. The Contents (Only visible when unlocked)
+        if (isChestUnlocked) {
+            // A. The Pump-Action Shotgun
+            if (!isShotgunCollected) {
+                glPushMatrix();
+                    glTranslatef(0.0f, 0.05f, 0.0f); // Rest flat on the chest floor
+                    glRotatef(15.0f, 0.0f, 1.0f, 0.0f); // Angle it slightly for aesthetic presentation
+
+                    // Grip & Shoulder Stock
+                    glColor3f(0.25f, 0.12f, 0.08f); // Dark Wood
+                    glPushMatrix(); 
+                        glTranslatef(-0.15f, 0.02f, 0.0f); 
+                        glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); // Slant the stock downward
+                        glScalef(0.18f, 0.06f, 0.04f); 
+                        drawSolidCube(1.0f); 
+                    glPopMatrix();
+
+                    // Main Receiver
+                    glColor3f(0.15f, 0.15f, 0.15f); // Gunmetal
+                    glPushMatrix(); 
+                        glTranslatef(0.0f, 0.04f, 0.0f); 
+                        glScalef(0.15f, 0.07f, 0.045f); 
+                        drawSolidCube(1.0f); 
+                    glPopMatrix();
+
+                    // Pump Handle
+                    glColor3f(0.25f, 0.12f, 0.08f); // Wood
+                    glPushMatrix(); 
+                        glTranslatef(0.15f, 0.02f, 0.0f); 
+                        glScalef(0.12f, 0.03f, 0.05f); 
+                        drawSolidCube(1.0f); 
+                    glPopMatrix();
+
+                    // Barrel
+                    glColor3f(0.1f, 0.1f, 0.1f); // Dark Metal
+                    glPushMatrix(); 
+                        glTranslatef(0.2f, 0.05f, 0.0f); 
+                        glRotatef(90.0f, 0.0f, 0.0f, 1.0f); 
+                        drawLowPolyCylinder(0.015f, 0.35f); 
+                    glPopMatrix();
+                glPopMatrix();
+            }
+
+            // B. The Blood Text on the inside of the Lid
+            glDisable(GL_LIGHTING); 
+            glColor3f(0.8f, 0.0f, 0.0f); 
+            glLineWidth(4.0f);
+            glPushMatrix();
+                glTranslatef(0.0f, 0.5f, -0.25f);
+                glRotatef(chestLidAngle, 1.0f, 0.0f, 0.0f);
+                glTranslatef(0.0f, -0.01f, 0.25f); 
+                
+                // THE FIX: Scaling Z by -0.2f mathematically flips the top and bottom of the letters!
+                glScalef(0.2f, 0.2f, -0.2f);
+                
+                // Explicit coordinates for "SURVIVE"
+                glBegin(GL_LINES);
+                    // S
+                    glVertex3f(-1.8f, 0.0f, -0.5f); glVertex3f(-1.4f, 0.0f, -0.5f);
+                    glVertex3f(-1.8f, 0.0f, -0.5f); glVertex3f(-1.8f, 0.0f, 0.0f);
+                    glVertex3f(-1.8f, 0.0f, 0.0f);  glVertex3f(-1.4f, 0.0f, 0.0f);
+                    glVertex3f(-1.4f, 0.0f, 0.0f);  glVertex3f(-1.4f, 0.0f, 0.5f);
+                    glVertex3f(-1.4f, 0.0f, 0.5f);  glVertex3f(-1.8f, 0.0f, 0.5f);
+                    // U
+                    glVertex3f(-1.2f, 0.0f, -0.5f); glVertex3f(-1.2f, 0.0f, 0.5f);
+                    glVertex3f(-1.2f, 0.0f, 0.5f);  glVertex3f(-0.8f, 0.0f, 0.5f);
+                    glVertex3f(-0.8f, 0.0f, 0.5f);  glVertex3f(-0.8f, 0.0f, -0.5f);
+                    // R
+                    glVertex3f(-0.6f, 0.0f, -0.5f); glVertex3f(-0.6f, 0.0f, 0.5f);
+                    glVertex3f(-0.6f, 0.0f, -0.5f); glVertex3f(-0.2f, 0.0f, -0.5f);
+                    glVertex3f(-0.2f, 0.0f, -0.5f); glVertex3f(-0.2f, 0.0f, 0.0f);
+                    glVertex3f(-0.2f, 0.0f, 0.0f);  glVertex3f(-0.6f, 0.0f, 0.0f);
+                    glVertex3f(-0.6f, 0.0f, 0.0f);  glVertex3f(-0.2f, 0.0f, 0.5f);
+                    // V
+                    glVertex3f(0.0f, 0.0f, -0.5f);  glVertex3f(0.2f, 0.0f, 0.5f);
+                    glVertex3f(0.2f, 0.0f, 0.5f);   glVertex3f(0.4f, 0.0f, -0.5f);
+                    // I
+                    glVertex3f(0.6f, 0.0f, -0.5f);  glVertex3f(0.8f, 0.0f, -0.5f);
+                    glVertex3f(0.7f, 0.0f, -0.5f);  glVertex3f(0.7f, 0.0f, 0.5f);
+                    glVertex3f(0.6f, 0.0f, 0.5f);   glVertex3f(0.8f, 0.0f, 0.5f);
+                    // V
+                    glVertex3f(1.0f, 0.0f, -0.5f);  glVertex3f(1.2f, 0.0f, 0.5f);
+                    glVertex3f(1.2f, 0.0f, 0.5f);   glVertex3f(1.4f, 0.0f, -0.5f);
+                    // E
+                    glVertex3f(1.6f, 0.0f, -0.5f);  glVertex3f(1.6f, 0.0f, 0.5f);
+                    glVertex3f(1.6f, 0.0f, -0.5f);  glVertex3f(2.0f, 0.0f, -0.5f);
+                    glVertex3f(1.6f, 0.0f, 0.0f);   glVertex3f(1.9f, 0.0f, 0.0f);
+                    glVertex3f(1.6f, 0.0f, 0.5f);   glVertex3f(2.0f, 0.0f, 0.5f);
+                glEnd();
+            glPopMatrix();
+            glLineWidth(1.0f);
+            glEnable(GL_LIGHTING);
+        }
+
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glEnable(GL_TEXTURE_2D);
+    glPopMatrix();
+}
+
+void Scene::drawViewModel() {
+    if (!isShotgunCollected) return;
+
+    // Clear depth so the gun never clips into walls!
+    glClear(GL_DEPTH_BUFFER_BIT); 
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    // Position the gun in the bottom-right corner of the screen
+    glTranslatef(0.15f, -0.15f, -0.4f); 
+    glRotatef(5.0f, 0.0f, 1.0f, 0.0f); // Angle it slightly toward the center
+
+    // Enable lighting for dynamic flashlight reflections on the metal
+    glEnable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+
+    // Reuse our 4-part shotgun geometry
+    glPushMatrix();
+        glScalef(0.6f, 0.6f, 0.6f); 
+
+        // Grip & Shoulder Stock
+        glColor3f(0.25f, 0.12f, 0.08f); 
+        glPushMatrix(); glTranslatef(-0.15f, 0.02f, 0.0f); glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); glScalef(0.18f, 0.06f, 0.04f); drawSolidCube(1.0f); glPopMatrix();
+
+        // Main Receiver
+        glColor3f(0.15f, 0.15f, 0.15f); 
+        glPushMatrix(); glTranslatef(0.0f, 0.04f, 0.0f); glScalef(0.15f, 0.07f, 0.045f); drawSolidCube(1.0f); glPopMatrix();
+
+        // Pump Handle
+        glColor3f(0.25f, 0.12f, 0.08f); 
+        glPushMatrix(); glTranslatef(0.15f, 0.02f, 0.0f); glScalef(0.12f, 0.03f, 0.05f); drawSolidCube(1.0f); glPopMatrix();
+
+        // Barrel
+        glColor3f(0.1f, 0.1f, 0.1f); 
+        glPushMatrix(); glTranslatef(0.2f, 0.05f, 0.0f); glRotatef(90.0f, 0.0f, 0.0f, 1.0f); drawLowPolyCylinder(0.015f, 0.35f); glPopMatrix();
+    glPopMatrix();
+    
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glEnable(GL_TEXTURE_2D);
+}
+
 void Scene::setupCabinLights() {
     // Warm, dim bulb colors
     GLfloat lightDiffuse[] = { 0.7f, 0.6f, 0.4f, 1.0f }; 
@@ -937,11 +1205,55 @@ void Scene::positionCabinLights() {
     glLightfv(GL_LIGHT4, GL_POSITION, posHallway);
 }
 
+void Scene::renderKeypadUI(int width, int height) {
+    if (!isChestKeypadActive) return;
+
+    // Switch to 2D Ortho
+    glDisable(GL_DEPTH_TEST); glDisable(GL_LIGHTING); glDisable(GL_TEXTURE_2D);
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+    glOrtho(0, width, height, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+
+    // Dark background panel
+    float cx = width / 2.0f, cy = height / 2.0f;
+    glColor4f(0.1f, 0.1f, 0.15f, 0.9f);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBegin(GL_QUADS);
+        glVertex2f(cx - 100, cy - 40); glVertex2f(cx + 100, cy - 40);
+        glVertex2f(cx + 100, cy + 40); glVertex2f(cx - 100, cy + 40);
+    glEnd();
+    glDisable(GL_BLEND);
+
+    // Draw the digital numbers as crude glowing lines
+    glColor3f(0.0f, 1.0f, 0.2f); // Neon Green
+    glLineWidth(3.0f);
+    
+    float startX = cx - 60.0f;
+    for (int i = 0; i < 4; i++) {
+        // Draw an underscore for empty slots
+        if (i >= currentCode.length()) {
+            glBegin(GL_LINES); glVertex2f(startX + (i * 35), cy + 15); glVertex2f(startX + 20 + (i * 35), cy + 15); glEnd();
+        } else {
+            // Draw a vertical tally mark for each typed number (Simulating an encrypted screen)
+            glBegin(GL_LINES); glVertex2f(startX + 10 + (i * 35), cy - 15); glVertex2f(startX + 10 + (i * 35), cy + 15); glEnd();
+        }
+    }
+    glLineWidth(1.0f);
+
+    // Restore 3D
+    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW);
+    glEnable(GL_DEPTH_TEST); glEnable(GL_LIGHTING); glEnable(GL_TEXTURE_2D);
+}
+
 void Scene::render(float camX, float camY, float camZ) {
     drawSkybox(camX, camY, camZ); // 1. Draw the skybox first (at infinity)
     
     positionCabinLights();        // 2. Lock dynamic lights
     drawEnvironment();            // 3. Draw the 3D world geometry
-    drawDeskWithDrawer();         // 4. Draw interactive props
+    // 4. Draw interactive props
+    for (int i = 0; i < 5; i++) {
+        drawPuzzleDrawer(drawers[i]);
+    }       
+    drawChest();
     debris.render();              // 5. Draw shotgun physics
 }

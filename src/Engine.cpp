@@ -1,10 +1,15 @@
 #include "Engine.h"
+#include <iostream>
+#include <cmath>
+#include <string>
 
 Engine::Engine(int width, int height, const char* title)
     : window(nullptr), width(width), height(height), title(title),
       camera(0.0f, 1.7f, 18.0f),
       deltaTime(0.0f), lastFrame(0.0f),
-      lastMouseX(width / 2.0), lastMouseY(height / 2.0), firstMouse(true) {}
+      lastMouseX(width / 2.0), lastMouseY(height / 2.0), firstMouse(true),
+      currentState(GameState::AWAKENING),
+      awakeningTimer(0.0f) {}
 
 Engine::~Engine() {
     if (window) {
@@ -15,19 +20,103 @@ Engine::~Engine() {
 }
 
 void Engine::handleInteraction() {
-    Ray ray;
-    camera.getPosition(ray.origin[0], ray.origin[1], ray.origin[2]);
-    camera.getForwardVector(ray.direction[0], ray.direction[1], ray.direction[2]);
+    if (currentState == GameState::AWAKENING || currentState == GameState::KEYPAD) return;
 
-    scene.tryInteract(ray);
+    // 1. Get exact position
+    float cX, cY, cZ; 
+    camera.getPosition(cX, cY, cZ);
+    
+    // 2. Get exact forward direction using pass-by-reference!
+    float dX, dY, dZ;
+    camera.getForwardVector(dX, dY, dZ);
+
+    // 3. Cast the ray
+    Ray ray = { cX, cY, cZ, dX, dY, dZ };
+
+    if (scene.tryInteract(ray)) {
+        if (scene.isChestKeypadActive) {
+            currentState = GameState::KEYPAD;
+        } else if (scene.justPickedUpShotgun) {
+            // STATE TRANSITION: The player has armed themselves!
+            currentState = GameState::COMBAT;
+            std::cout << "[SYSTEM] SHOTGUN ACQUIRED. THE HUNT BEGINS." << std::endl;
+        }
+    }
 }
 
 void Engine::handleShooting() {
-    Ray ray;
-    camera.getPosition(ray.origin[0], ray.origin[1], ray.origin[2]);
-    camera.getForwardVector(ray.direction[0], ray.direction[1], ray.direction[2]);
+    // Only allow firing if the player is actively in COMBAT!
+    if (currentState != GameState::COMBAT) return; 
 
-    scene.shoot(ray);
+    float cX, cY, cZ; camera.getPosition(cX, cY, cZ);
+    float dX, dY, dZ; camera.getForwardVector(dX, dY, dZ);
+    Ray ray = { cX, cY, cZ, dX, dY, dZ };
+
+    // Trigger the debris system!
+    scene.shoot(ray); 
+}
+
+void Engine::renderBlinkOverlay(int width, int height) {
+    if (currentState != GameState::AWAKENING) return;
+
+    float progress = awakeningTimer / 4.0f;
+    
+    // MATHEMATICAL BLINKING:
+    // cos() creates the open/close blink rhythm.
+    // (1.0f - progress) forces the blackness to fade away as time passes.
+    float alpha = fabs(cos(awakeningTimer * 3.5f)) * (1.0f - progress);
+
+    // Clamp alpha safely
+    if (alpha < 0.0f) alpha = 0.0f;
+    if (alpha > 1.0f) alpha = 1.0f;
+
+    // Switch OpenGL to 2D Orthographic UI mode
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, width, height, 0, -1, 1); // 2D Screen Space
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    // Draw a pitch-black fullscreen quad that fades out
+    glColor4f(0.0f, 0.0f, 0.0f, alpha);
+    glBegin(GL_QUADS);
+        glVertex2f(0.0f, 0.0f);
+        glVertex2f((float)width, 0.0f);
+        glVertex2f((float)width, (float)height);
+        glVertex2f(0.0f, (float)height);
+    glEnd();
+
+    // Restore 3D Perspective mode
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+}
+
+void Engine::updateAwakening(float deltaTime) {
+    if (currentState != GameState::AWAKENING) return;
+
+    awakeningTimer += deltaTime;
+    float duration = 4.0f; // The sequence lasts 4 seconds
+    float progress = awakeningTimer / duration;
+
+    if (progress > 1.0f) {
+        progress = 1.0f;
+        currentState = GameState::EXPLORING; // Give control back to the player!
+    }
+
+    // Linearly interpolate the camera height from 0.2f (ground) to 1.7f (standing)
+    camera.y = 0.2f + (progress * 1.5f);
 }
 
 static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
@@ -40,19 +129,58 @@ static void mouseButtonCallback(GLFWwindow* window, int button, int action, int 
     }
 }
 
-// Triggers precisely once per key press, preventing rapid interactions
 static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    // Handle Interaction ('E' key)
-    if (key == GLFW_KEY_E && action == GLFW_PRESS) {
-        Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
-        if (engine) {
-            engine->handleInteraction();
+    // 1. We MUST extract the engine pointer from the GLFW window!
+    Engine* engine = static_cast<Engine*>(glfwGetWindowUserPointer(window));
+    if (!engine) return;
+
+    // 2. KEYPAD PUZZLE STATE LOGIC
+    if (engine->currentState == GameState::KEYPAD) {
+        if (action == GLFW_PRESS) {
+            // Exit Keypad
+            if (key == GLFW_KEY_ESCAPE || key == GLFW_KEY_E) {
+                engine->scene.isChestKeypadActive = false;
+                engine->currentState = GameState::EXPLORING;
+                engine->scene.currentCode = ""; 
+            }
+            // Delete Number
+            else if (key == GLFW_KEY_BACKSPACE && !engine->scene.currentCode.empty()) {
+                engine->scene.currentCode.pop_back();
+            }
+            // Type Number (0-9)
+            else if (engine->scene.currentCode.length() < 4) {
+                if (key >= GLFW_KEY_0 && key <= GLFW_KEY_9) {
+                    engine->scene.currentCode += std::to_string(key - GLFW_KEY_0);
+                } else if (key >= GLFW_KEY_KP_0 && key <= GLFW_KEY_KP_9) {
+                    engine->scene.currentCode += std::to_string(key - GLFW_KEY_KP_0);
+                }
+            }
+
+            // Check Win Condition!
+            if (engine->scene.currentCode.length() == 4) {
+                if (engine->scene.currentCode == engine->scene.correctCode) {
+                    engine->scene.isChestUnlocked = true;
+                    engine->scene.isChestKeypadActive = false;
+                    engine->currentState = GameState::EXPLORING;
+                    std::cout << "[SYSTEM] CHEST UNLOCKED!" << std::endl;
+                } else {
+                    engine->scene.currentCode = "";
+                    std::cout << "[SYSTEM] ERROR: Incorrect Code." << std::endl;
+                }
+            }
         }
+        return; // BLOCK ALL OTHER INPUTS WHILE TYPING!
     }
 
-    // Handle Window Close ('ESC' key)
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    // 3. NORMAL EXPLORATION LOGIC
+    if (action == GLFW_PRESS) {
+        if (key == GLFW_KEY_ESCAPE) {
+            glfwSetWindowShouldClose(window, true);
+        } 
+        // RESTORE THE INTERACTION TRIGGER!
+        else if (key == GLFW_KEY_E) {
+            engine->handleInteraction();
+        }
     }
 }
 
@@ -110,42 +238,68 @@ void Engine::processInput() {
 }
 
 int Engine::run() {
+    // 1. Hand the Engine pointer to GLFW so static callbacks can access it!
+    glfwSetWindowUserPointer(window, this); 
+
+    // 2. Register callbacks once BEFORE the loop starts
+    glfwSetKeyCallback(window, keyCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+
     // --- CORE GAME LOOP ---
     while (!glfwWindowShouldClose(window)) {
-        float cX, cY, cZ;
-        camera.getPosition(cX, cY, cZ);
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
         glfwPollEvents();
-        processInput();
 
-        // Render Pipeline
+        // --- 1. UPDATE PHASE ---
+        // Branch logic based on our Game State
+        if (currentState == GameState::AWAKENING) {
+            updateAwakening(deltaTime);
+        } else if (currentState == GameState::KEYPAD) {
+            // Freeze WASD movement, but keep updating physics so the chest can open!
+            scene.updatePhysics(deltaTime);
+        } else {
+            // Fully awake and exploring
+            processInput();
+            scene.updatePhysics(deltaTime);
+        }
+
+        // --- 2. RENDER PIPELINE ---
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        // Keyboard callback
-        glfwSetKeyCallback(window, keyCallback);
-
-        // Mouse callback
-        glfwSetMouseButtonCallback(window, mouseButtonCallback);
-
-        // 1. Bind tactical spotlight in Eye Space (before camera transformation)
+        // Bind tactical spotlight in Eye Space (before camera transformation)
         scene.setupTacticalFlashlight();
 
-        // 2. Apply camera transformations (gluLookAt)
+        // Apply camera transformations (gluLookAt)
         camera.applyViewMatrix();
 
-        // 3. Render world geometry
+        // Extract camera coordinates for the Skybox rendering
+        float cX, cY, cZ;
+        camera.getPosition(cX, cY, cZ);
+
+        // Render world geometry (Skybox, Cabin, Forest, etc.)
         scene.render(cX, cY, cZ);
 
-        // 4. Physics update
-        scene.updatePhysics(deltaTime);
-
-        //overlay for interactive objects
+        // Overlay for interactive objects (e.g., Reading notes)
         scene.renderOverlay();
+
+        // Draw the first-person shotgun if we are in combat!
+        if (currentState == GameState::COMBAT) {
+            scene.drawViewModel();
+        }
+
+        // --- 3. CINEMATIC OVERLAY ---
+        // Dynamically get the window dimensions so the blink overlay covers the whole screen
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        renderBlinkOverlay(width, height);
+
+        // Draw the digital keypad if active
+        scene.renderKeypadUI(width, height);
 
         glfwSwapBuffers(window);
     }
@@ -153,7 +307,6 @@ int Engine::run() {
     return 0;
 }
 
-// --- STATIC CALLBACK IMPLEMENTATIONS ---
 void Engine::framebufferSizeCallback(GLFWwindow* window, int width, int height) {
     if (height == 0) height = 1;
     
