@@ -14,7 +14,7 @@ public:
     float mouseSensitivity;
 
     // Constructor with standard human eye-height defaults
-    Camera(float startX = 0.0f, float startY = 1.7f, float startZ = 3.0f);
+    Camera(float startX = 0.0f, float startY = 1.7f, float startZ = 15.0f);
 
     // Input processing methods
     void processKeyboard(GLFWwindow* window, float deltaTime, const Scene& scene);

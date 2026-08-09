@@ -12,12 +12,20 @@ private:
     TextureManager texManager;
     
     // Texture IDs
-    GLuint texFloor, texWall, texWood; 
+    GLuint texFloor, texWall, texWood, texGrass, texDirt, texSky; 
 
     // Helper methods for procedural geometry
+    float getTerrainHeight(float x, float z) const;
+    void drawLowPolyCone(float radius, float height);
+    void drawTree(float x, float z, int treeType);
+    void drawForestTile(float startX, float startZ);
     void drawSolidCube(float size);
-    void drawAbandonedRoom();
+    void drawThickWall(float x, float z, float widthX, float depthZ);
+    void drawLowPolyCylinder(float radius, float length);
+    void drawWindowWall(float x, float z, float widthX, float depthZ, float sillHeight = 1.0f, float lintelHeight = 1.0f);
+    void drawEnvironment();
     void drawDeskWithDrawer();
+    void drawSkybox(float camX, float camY, float camZ);
 
     //drawer manipulation 
     bool isDrawerOpen;
@@ -39,6 +47,10 @@ public:
     // Initializes fixed-function lighting state (called once at startup)
     void initLighting();
 
+    // Initializes dynamic lights
+    void setupCabinLights();   
+    void positionCabinLights();
+
     // Loads the image files into VRAM in the start
     void loadAssets();
     
@@ -46,7 +58,7 @@ public:
     void setupTacticalFlashlight();
     
     // Renders all world geometry 
-    void render();
+    void render(float camX, float camY, float camZ);
 
     // Interation functions
     void updatePhysics(float deltaTime);

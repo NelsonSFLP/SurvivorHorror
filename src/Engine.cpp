@@ -2,7 +2,7 @@
 
 Engine::Engine(int width, int height, const char* title)
     : window(nullptr), width(width), height(height), title(title),
-      camera(0.0f, 1.7f, 3.0f),
+      camera(0.0f, 1.7f, 18.0f),
       deltaTime(0.0f), lastFrame(0.0f),
       lastMouseX(width / 2.0), lastMouseY(height / 2.0), firstMouse(true) {}
 
@@ -112,6 +112,8 @@ void Engine::processInput() {
 int Engine::run() {
     // --- CORE GAME LOOP ---
     while (!glfwWindowShouldClose(window)) {
+        float cX, cY, cZ;
+        camera.getPosition(cX, cY, cZ);
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
@@ -137,7 +139,7 @@ int Engine::run() {
         camera.applyViewMatrix();
 
         // 3. Render world geometry
-        scene.render(); 
+        scene.render(cX, cY, cZ);
 
         // 4. Physics update
         scene.updatePhysics(deltaTime);
