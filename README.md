@@ -79,10 +79,10 @@ O motor foi construído sob uma arquitetura modular, usando de matrizes lógicas
 ![Mecânica 1:](docs/colision.gif)
 
 
-**5. Sistema de Partículas e Integração de Euler**
+**5. Sistema de Partículas e método de Euler**
 
 * **Decisão de Projeto:** Detritos físicos com alto desempenho e sem *memory leaks* (vazamentos de memória).
-* **Implementação:** Quando a escopeta dispara contra uma gaveta, ativamos o sistema de destruição. Para evitar alocação e destruição frequente na RAM (*malloc/free*), desenvolvemos um padrão de **Object Pool** — um array pré-alocado de 500 partículas. Durante o *Game Loop*, aplicamos a Integração de Euler (`v = v + g*dt`) em cada partícula ativa para simular a física gravitacional descendente até que expirem. O sistema utiliza da informação de textura do objeto para decidir a textura da partícula ativa.
+* **Implementação:** Quando a escopeta dispara contra uma gaveta, ativamos o sistema de destruição. Para evitar alocação e destruição frequente na RAM (*malloc/free*), desenvolvemos um padrão de **Object Pool** — um array pré-alocado de 500 partículas. Durante o *Game Loop*, aplicamos o método de Euler (`v = v + g*dt`) em cada partícula ativa para simular a física gravitacional descendente até que expirem. O sistema utiliza da informação de textura do objeto para decidir a textura da partícula ativa.
 
 ![Mecânica 2:](docs/debris.gif)
 
