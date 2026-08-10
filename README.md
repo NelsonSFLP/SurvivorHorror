@@ -31,21 +31,70 @@ O ambiente de desenvolvimento e execução baseia-se no ecossistema MSYS2 nativo
 
 ### Compilação e Execução
 
-1. Clone o repositório ou navegue até a raiz do projeto.
-2. Abra o terminal **MSYS2 UCRT64** e certifique-se de estar no diretório do projeto Ex:`/c/Users/Projects/...`.
-3. Execute os seguintes comandos para compilar o motor gráfico:
+---
+
+#### 🐧 Guia Linux - Ubuntu/Debian
+
+**1. Instalar as Dependências do Sistema**
+Em uma instalação limpa do Linux, você precisa do compilador C++, CMake, e das bibliotecas de desenvolvimento do OpenGL e GLFW. Abra o seu terminal e execute:
 
 ```bash
+sudo apt update && sudo apt install -y build-essential cmake ninja-build libglfw3-dev libglu1-mesa-dev xorg-dev
+
+```
+
+**2. Configurar o CMake e Compilar**
+Navegue até a raiz do projeto clonado e utilize o CMake (com o sistema de build Ninja para maior velocidade) para compilar o motor gráfico:
+
+```bash
+cmake -B build -G Ninja
 cmake --build build
 
 ```
 
-4. Para iniciar a simulação, execute o binário recém-gerado:
+**3. Iniciar a Simulação**
+No Linux, os binários não possuem a extensão `.exe`. Para rodar o jogo, execute:
 
 ```bash
-./build/horror_engine.exe
+./build/horror_engine
 
 ```
+
+---
+
+#### 🐧 Guia Windows 
+
+Aqui está a tradução do passo a passo para testar e configurar o jogo em um ambiente Windows limpo (sem nada instalado). Você pode usar isso para validar suas instruções ou até mesmo adicionar ao seu `README.md` se quiser ser extremamente detalhista!
+
+---
+
+### 1. Instalar o MSYS2 e a Cadeia de Ferramentas UCRT64
+
+* Baixe e execute o instalador a partir do site oficial do MSYS2 (**msys2.org**).
+* Instale o software no diretório padrão (geralmente `C:\msys64`).
+* Assim que a instalação for concluída, abra o terminal azul **MSYS2 UCRT64** no Menu Iniciar do Windows. Você deve garantir o uso deste terminal específico, e não o terminal amarelo "MSYS" ou o Windows PowerShell padrão.
+
+### 2. Instalar o Compilador e as Dependências
+
+* No terminal MSYS2 UCRT64, instale o compilador GCC e a biblioteca gráfica GLFW3 executando este comando do gerenciador de pacotes:
+`pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-glfw`
+* Quando solicitado, digite **Y** e pressione **Enter** para aceitar a instalação.
+
+### 3. Navegar até a Pasta do Projeto
+
+* Certifique-se de que o repositório do seu projeto foi baixado na nova máquina Windows.
+* No terminal MSYS2, navegue até o diretório do seu projeto.
+* Exemplo: `cd /c/Users/SeuUsuario/Projects/HorrorGame`.
+
+### 4. Compilar o Motor Gráfico
+
+* Execute o comando de build do CMake digitando `cmake --build build` e pressionando **Enter**.
+
+### 5. Iniciar e Verificar a Captura de Hardware
+
+* Inicie o jogo executando `./build/horror_engine.exe` diretamente no terminal.
+* Assim que a janela do jogo abrir, clique com o botão esquerdo dentro dela. Você deve verificar se o cursor do mouse do Windows desaparece completamente.
+* Pressione a tecla **ESC** para verificar se a janela é encerrada de forma limpa e retorna diretamente ao prompt de comando do MSYS2.
 
 ---
 
