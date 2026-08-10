@@ -64,8 +64,6 @@ No Linux, os binários não possuem a extensão `.exe`. Para rodar o jogo, execu
 
 #### 🐧 Guia Windows 
 
-Aqui está a tradução do passo a passo para testar e configurar o jogo em um ambiente Windows limpo (sem nada instalado). Você pode usar isso para validar suas instruções ou até mesmo adicionar ao seu `README.md` se quiser ser extremamente detalhista!
-
 ---
 
 ### 1. Instalar o MSYS2 e a Cadeia de Ferramentas UCRT64
