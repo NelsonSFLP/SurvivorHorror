@@ -5,7 +5,7 @@
 
 ## 📌 Visão Geral
 
-Este projeto consiste em uma prova de conceito (*Proof of Concept*) de um jogo de *Survival Horror* psicológico em primeira pessoa, ambientado em uma cabana proceduralmente gerada dentro de uma densa floresta. O motor gráfico foi desenvolvido em C++, utilizando OpenGL 2.1 como requisito para o projeto final da displina de Computação Gráfica
+Este projeto consiste em uma prova de conceito (*Proof of Concept*) de um jogo de *Survival Horror* psicológico em primeira pessoa, ambientado em uma cabana proceduralmente gerada dentro de uma densa floresta. O motor gráfico foi desenvolvido em C++, utilizando OpenGL 2.1 como requisito para o projeto final da disciplina de Computação Gráfica
 
 A arquitetura foi projetada para focar na atmosfera, gestão de luzes dinâmicas, física de partículas e interação ambiental, sem usar uma engine pronta, necessitando assim do uso extenso e preciso das ferramentas disponibilizadas pelo OpenGL trabalhadas durante a disciplina e exploradas a parte.
 
