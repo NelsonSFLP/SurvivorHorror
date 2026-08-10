@@ -12,7 +12,8 @@ enum class GameState {
     EXPLORING,
     KEYPAD,     
     COMBAT,
-    COMPLETED
+    COMPLETED,
+    GAME_OVER
 };
 
 class Engine {
@@ -67,6 +68,9 @@ public:
     // Deals with player interactions 
     void handleInteraction();
     void handleShooting();
+
+    float endTimer;
+    void resetGame();
 };
 
 #endif // ENGINE_H

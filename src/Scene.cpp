@@ -1,6 +1,8 @@
 #include "Scene.h"
 
 Scene::Scene() : texFloor(0), texWall(0), texWood(0), isDrawerOpen(false), currentDrawerZ(0.0f), isInspectingNote(false) {
+    monstersKilled = 0;
+    playerHealth = 100.0f;
     // 2 Drawers in the Main Room (Sala Principal: Z from -2 to 12)
     drawers[0] = { -10.0f, 5.0f,  90.0f, false, 0.0f, false }; // Placed against the West wall
     drawers[1] = {  10.0f, 5.0f, -90.0f, false, 0.0f, false }; // Placed against the East wall
@@ -25,7 +27,7 @@ Scene::Scene() : texFloor(0), texWall(0), texWood(0), isDrawerOpen(false), curre
     correctCode = "1234"; // Placeholder solution!
 }
 
-void Scene::updatePhysics(float deltaTime) {
+void Scene::updatePhysics(float deltaTime, float playerX, float playerZ) {
     // Smoothly animate the drawer sliding open or closed
     for (int i = 0; i < 5; i++) {
         if (drawers[i].isOpen) {
@@ -42,43 +44,134 @@ void Scene::updatePhysics(float deltaTime) {
         chestLidAngle -= 45.0f * deltaTime; // Swing open
         if (chestLidAngle < -110.0f) chestLidAngle = -110.0f;
     }
+
+    // MONSTER CHASING AI
+    for (int i = 0; i < 5; i++) {
+        if (!monsters[i].isAlive) continue;
+
+        // 1. Smart Pathfinding: Funnel through the front door!
+        float targetX = playerX;
+        float targetZ = playerZ;
+        
+        if (monsters[i].z > 12.5f && playerZ < 11.5f) {
+            targetX = 0.0f;  
+            targetZ = 12.0f; 
+        }
+
+        // 2. Calculate movement towards the target
+        float dx = targetX - monsters[i].x;
+        float dz = targetZ - monsters[i].z;
+        float distToTarget = sqrt(dx*dx + dz*dz);
+        
+        // 3. Calculate true distance to player for melee damage
+        float dxPlayer = playerX - monsters[i].x;
+        float dzPlayer = playerZ - monsters[i].z;
+        float distToPlayer = sqrt(dxPlayer*dxPlayer + dzPlayer*dzPlayer);
+
+        // 4. NEW: Flocking AI! Prevent monsters from merging into a single entity!
+        for (int j = 0; j < 5; j++) {
+            if (i == j || !monsters[j].isAlive) continue;
+            float mx = monsters[i].x - monsters[j].x;
+            float mz = monsters[i].z - monsters[j].z;
+            float mDist = sqrt(mx*mx + mz*mz);
+            
+            if (mDist < 0.8f && mDist > 0.001f) {
+                // Gently push them apart so they swarm you in a circle
+                monsters[i].x += (mx / mDist) * 1.5f * deltaTime;
+                monsters[i].z += (mz / mDist) * 1.5f * deltaTime;
+            }
+        }
+
+        // 5. Chase or Attack (Reduced range to 0.5f to prevent hitting through the chest!)
+        if (distToPlayer > 0.5f) { 
+            if (distToTarget > 0.1f) {
+                float speed = 3.5f; 
+                float moveX = (dx / distToTarget) * speed * deltaTime;
+                float moveZ = (dz / distToTarget) * speed * deltaTime;
+
+                if (isWalkable(monsters[i].x + moveX, monsters[i].z)) monsters[i].x += moveX;
+                if (isWalkable(monsters[i].x, monsters[i].z + moveZ)) monsters[i].z += moveZ;
+            }
+        } else {
+            // THE MONSTER HAS CAUGHT YOU! 
+            playerHealth -= 25.0f * deltaTime; // Slower damage so you have time to react!
+        }
+    }
+
     cursedSigil.update(deltaTime);
     debris.update(deltaTime);
 }
 
 void Scene::shoot(const Ray& cameraRay) {
-    float hitDistance = 0.0f;
-    
-    // Define the desk's physical boundaries
-    float deskMinX = 2.0f - 0.8f; float deskMaxX = 2.0f + 0.8f;
-    float deskMinY = 0.8f - 0.1f; float deskMaxY = 0.8f + 0.1f; 
-    float deskMinZ = -3.5f - 0.4f; float deskMaxZ = -3.5f + 0.4f;
+    float closestHit = 9999.0f;
+    int hitDeskIndex = -1;
+    int hitMonsterIndex = -1;
 
-    AABB deskBox;
-    deskBox.min[0] = deskMinX; deskBox.max[0] = deskMaxX;
-    deskBox.min[1] = deskMinY; deskBox.max[1] = deskMaxY;
-    deskBox.min[2] = deskMinZ; deskBox.max[2] = deskMaxZ;
-
-    // Check if the shotgun blast hit the desk
-    if (checkRayAABBIntersection(cameraRay, deskBox, hitDistance)) {
-        // Calculate the exact 3D impact coordinate in the world
-        float hitX = cameraRay.origin[0] + cameraRay.direction[0] * hitDistance;
-        float hitY = cameraRay.origin[1] + cameraRay.direction[1] * hitDistance;
-        float hitZ = cameraRay.origin[2] + cameraRay.direction[2] * hitDistance;
-
-        // Spawn 30 wooden splinters at the impact site!
-        debris.spawnExplosion(hitX, hitY, hitZ, texWood);
+    // 1. Check Monster Collisions First!
+    for (int i = 0; i < 5; i++) {
+        if (!monsters[i].isAlive) continue;
         
-        std::cout << "[SYSTEM] SHOT FIRED! Desk hit at distance: " << hitDistance << "m" << std::endl;
+        // Build the AABB for the 2-meter tall monster entity
+        AABB monsterBox = { monsters[i].x - 0.3f, 0.0f, monsters[i].z - 0.3f,
+                            monsters[i].x + 0.3f, 2.0f, monsters[i].z + 0.3f };
+        
+        float tEntry;
+        if (checkRayAABBIntersection(cameraRay, monsterBox, tEntry)) {
+            if (tEntry > 0.0f && tEntry < closestHit) {
+                closestHit = tEntry;
+                hitMonsterIndex = i;
+                hitDeskIndex = -1; // Override any desk behind the monster
+            }
+        }
+    }
+
+    // 2. Check Desk Collisions
+    for (int i = 0; i < 5; i++) {
+        AABB deskBox = { drawers[i].x - 0.8f, 0.0f, drawers[i].z - 0.8f,
+                         drawers[i].x + 0.8f, 1.2f, drawers[i].z + 0.8f };
+        
+        float tEntry;
+        if (checkRayAABBIntersection(cameraRay, deskBox, tEntry)) {
+            if (tEntry > 0.0f && tEntry < closestHit) {
+                closestHit = tEntry;
+                hitDeskIndex = i;
+                hitMonsterIndex = -1; // Override any monster behind the desk
+            }
+        }
+    }
+
+    // 3. Process the Hit!
+    if (hitMonsterIndex != -1) {
+        // Apply 50 Damage (2 shots to kill a 100 HP monster)
+        monsters[hitMonsterIndex].health -= 50.0f;
+        
+        if (monsters[hitMonsterIndex].health <= 0.0f) {
+            monsters[hitMonsterIndex].isAlive = false;
+            monstersKilled++;
+            std::cout << "[SYSTEM] Entity Destroyed. (" << monstersKilled << "/5)" << std::endl;
+        }
+        
+        // Spawn debris at the exact impact point using array indices!
+        float hitX = cameraRay.origin[0] + (cameraRay.direction[0] * closestHit);
+        float hitY = cameraRay.origin[1] + (cameraRay.direction[1] * closestHit);
+        float hitZ = cameraRay.origin[2] + (cameraRay.direction[2] * closestHit);
+        debris.spawnExplosion(hitX, hitY, hitZ, texWood); 
+        
+    } else if (hitDeskIndex != -1) {
+        // Spawn wooden splinters from the desk
+        float hitX = cameraRay.origin[0] + (cameraRay.direction[0] * closestHit);
+        float hitY = cameraRay.origin[1] + (cameraRay.direction[1] * closestHit);
+        float hitZ = cameraRay.origin[2] + (cameraRay.direction[2] * closestHit);
+        debris.spawnExplosion(hitX, hitY, hitZ, texWood);
     }
 }
 
 bool Scene::isWalkable(float targetX, float targetZ) const {
     float playerRadius = 0.3f; 
 
-    // Forest boundary (20m)
-    if (targetX - playerRadius < -20.0f || targetX + playerRadius > 20.0f) return false;
-    if (targetZ - playerRadius < -20.0f || targetZ + playerRadius > 20.0f) return false;
+    // 1. Expand Forest boundary to 60m so monsters can run through the woods!
+    if (targetX - playerRadius < -60.0f || targetX + playerRadius > 60.0f) return false;
+    if (targetZ - playerRadius < -60.0f || targetZ + playerRadius > 60.0f) return false;
 
     // A Lambda helper that checks collision exactly like drawThickWall parameters
     auto hitWall = [&](float cx, float cz, float w, float d) {
@@ -1038,41 +1131,10 @@ void Scene::drawChest() {
             // A. The Pump-Action Shotgun
             if (!isShotgunCollected) {
                 glPushMatrix();
-                    glTranslatef(0.0f, 0.05f, 0.0f); // Rest flat on the chest floor
-                    glRotatef(15.0f, 0.0f, 1.0f, 0.0f); // Angle it slightly for aesthetic presentation
-
-                    // Grip & Shoulder Stock
-                    glColor3f(0.25f, 0.12f, 0.08f); // Dark Wood
-                    glPushMatrix(); 
-                        glTranslatef(-0.15f, 0.02f, 0.0f); 
-                        glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); // Slant the stock downward
-                        glScalef(0.18f, 0.06f, 0.04f); 
-                        drawSolidCube(1.0f); 
-                    glPopMatrix();
-
-                    // Main Receiver
-                    glColor3f(0.15f, 0.15f, 0.15f); // Gunmetal
-                    glPushMatrix(); 
-                        glTranslatef(0.0f, 0.04f, 0.0f); 
-                        glScalef(0.15f, 0.07f, 0.045f); 
-                        drawSolidCube(1.0f); 
-                    glPopMatrix();
-
-                    // Pump Handle
-                    glColor3f(0.25f, 0.12f, 0.08f); // Wood
-                    glPushMatrix(); 
-                        glTranslatef(0.15f, 0.02f, 0.0f); 
-                        glScalef(0.12f, 0.03f, 0.05f); 
-                        drawSolidCube(1.0f); 
-                    glPopMatrix();
-
-                    // Barrel
-                    glColor3f(0.1f, 0.1f, 0.1f); // Dark Metal
-                    glPushMatrix(); 
-                        glTranslatef(0.2f, 0.05f, 0.0f); 
-                        glRotatef(90.0f, 0.0f, 0.0f, 1.0f); 
-                        drawLowPolyCylinder(0.015f, 0.35f); 
-                    glPopMatrix();
+                    // Global transform for gun placement
+                    glTranslatef(0.0f, 0.05f, 0.0f);
+                    glRotatef(15.0f, 0.0f, 1.0f, 0.0f);
+                    drawShotgunGeometry();
                 glPopMatrix();
             }
 
@@ -1132,42 +1194,194 @@ void Scene::drawChest() {
     glPopMatrix();
 }
 
+void Scene::drawTaperedBox(float length, float heightFront, float heightBack, float depthFront, float depthBack) {
+    float xFront = length / 2.0f;
+    float xBack  = -length / 2.0f;
+
+    float hf = heightFront / 2.0f;
+    float hb = heightBack / 2.0f;
+
+    float df = depthFront / 2.0f;
+    float db = depthBack / 2.0f;
+
+    glBegin(GL_QUADS);
+
+        // FRONT
+        glNormal3f(1.0f, 0.0f, 0.0f);
+
+        glVertex3f(xFront, -hf, -df);
+        glVertex3f(xFront,  hf, -df);
+        glVertex3f(xFront,  hf,  df);
+        glVertex3f(xFront, -hf,  df);
+
+        // BACK
+        glNormal3f(-1.0f, 0.0f, 0.0f);
+
+        glVertex3f(xBack, -hb,  db);
+        glVertex3f(xBack,  hb,  db);
+        glVertex3f(xBack,  hb, -db);
+        glVertex3f(xBack, -hb, -db);
+
+        // TOP
+        glNormal3f(0.0f, 1.0f, 0.0f);
+
+        glVertex3f(xBack, hb, -db);
+        glVertex3f(xBack, hb,  db);
+        glVertex3f(xFront, hf, df);
+        glVertex3f(xFront, hf, -df);
+
+        // BOTTOM
+        glNormal3f(0.0f, -1.0f, 0.0f);
+
+        glVertex3f(xBack, -hb,  db);
+        glVertex3f(xBack, -hb, -db);
+        glVertex3f(xFront, -hf, -df);
+        glVertex3f(xFront, -hf,  df);
+
+        // RIGHT SIDE
+        glNormal3f(0.0f, 0.0f, 1.0f);
+
+        glVertex3f(xBack, -hb, db);
+        glVertex3f(xFront, -hf, df);
+        glVertex3f(xFront,  hf, df);
+        glVertex3f(xBack,  hb, db);
+
+        // LEFT SIDE
+        glNormal3f(0.0f, 0.0f, -1.0f);
+
+        glVertex3f(xBack, hb, -db);
+        glVertex3f(xFront, hf, -df);
+        glVertex3f(xFront, -hf, -df);
+        glVertex3f(xBack, -hb, -db);
+
+    glEnd();
+}
+
+void Scene::drawShotgunGeometry() {
+    // Paste all 16 of your perfectly detailed shotgun parts here!
+    
+    // 1. WOODEN STOCK
+    glColor3f(0.28f, 0.11f, 0.055f);
+    glPushMatrix(); glTranslatef(-0.24f, 0.025f, 0.0f); glRotatef(-8.0f, 0.0f, 0.0f, 1.0f); drawTaperedBox(0.28f, 0.065f, 0.085f, 0.050f, 0.060f); glPopMatrix();
+    // Butt pad
+    glColor3f(0.07f, 0.07f, 0.07f);
+    glPushMatrix(); glTranslatef(-0.385f, 0.006f, 0.0f); glRotatef(-8.0f, 0.0f, 0.0f, 1.0f); glScalef(0.025f, 0.082f, 0.065f); drawSolidCube(1.0f); glPopMatrix();
+    // Stock / receiver transition
+    glColor3f(0.23f, 0.085f, 0.04f);
+    glPushMatrix(); glTranslatef(-0.075f, 0.055f, 0.0f); glRotatef(-5.0f, 0.0f, 0.0f, 1.0f); glScalef(0.075f, 0.075f, 0.050f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 2. RECEIVER
+    glColor3f(0.12f, 0.12f, 0.12f);
+    glPushMatrix(); glTranslatef(0.025f, 0.065f, 0.0f); glScalef(0.17f, 0.080f, 0.055f); drawSolidCube(1.0f); glPopMatrix();
+    // Receiver upper section
+    glColor3f(0.10f, 0.10f, 0.10f);
+    glPushMatrix(); glTranslatef(0.045f, 0.108f, 0.0f); glScalef(0.105f, 0.020f, 0.045f); drawSolidCube(1.0f); glPopMatrix();
+    // Receiver rear reinforcement
+    glColor3f(0.08f, 0.08f, 0.08f);
+    glPushMatrix(); glTranslatef(-0.055f, 0.065f, 0.0f); glScalef(0.035f, 0.090f, 0.060f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 3. PISTOL GRIP
+    glColor3f(0.25f, 0.095f, 0.045f);
+    glPushMatrix(); glTranslatef(-0.005f, -0.035f, 0.0f); glRotatef(-18.0f, 0.0f, 0.0f, 1.0f); glScalef(0.060f, 0.130f, 0.048f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 4. TRIGGER GUARD
+    glColor3f(0.055f, 0.055f, 0.055f);
+    glPushMatrix(); glTranslatef(0.035f, -0.015f, 0.0f); glScalef(0.012f, 0.065f, 0.042f); drawSolidCube(1.0f); glPopMatrix();
+    glPushMatrix(); glTranslatef(-0.050f, -0.015f, 0.0f); glScalef(0.012f, 0.065f, 0.042f); drawSolidCube(1.0f); glPopMatrix();
+    glPushMatrix(); glTranslatef(-0.008f, -0.047f, 0.0f); glScalef(0.085f, 0.012f, 0.042f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 5. TRIGGER
+    glColor3f(0.025f, 0.025f, 0.025f);
+    glPushMatrix(); glTranslatef(-0.005f, -0.012f, 0.0f); glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); glScalef(0.012f, 0.045f, 0.018f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 6. BARREL
+    glColor3f(0.065f, 0.065f, 0.065f);
+    glPushMatrix(); glTranslatef(0.335f, 0.105f, 0.0f); glRotatef(90.0f, 0.0f, 1.0f, 0.0f); drawLowPolyCylinder(0.018f, 0.58f); glPopMatrix();
+    
+    // 7. MUZZLE
+    glColor3f(0.045f, 0.045f, 0.045f);
+    glPushMatrix(); glTranslatef(0.635f, 0.105f, 0.0f); glRotatef(90.0f, 0.0f, 1.0f, 0.0f); drawLowPolyCylinder(0.022f, 0.045f); glPopMatrix();
+    
+    // 8. MAGAZINE TUBE
+    glColor3f(0.075f, 0.075f, 0.075f);
+    glPushMatrix(); glTranslatef(0.30f, 0.065f, 0.0f); glRotatef(90.0f, 0.0f, 1.0f, 0.0f); drawLowPolyCylinder(0.021f, 0.40f); glPopMatrix();
+    
+    // 9. PUMP / FOREND
+    glColor3f(0.24f, 0.095f, 0.045f);
+    glPushMatrix(); glTranslatef(0.205f, 0.067f, 0.0f); glScalef(0.135f, 0.065f, 0.052f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 10. FRONT PUMP BAND
+    glColor3f(0.09f, 0.09f, 0.09f);
+    glPushMatrix(); glTranslatef(0.275f, 0.067f, 0.0f); glRotatef(90.0f, 0.0f, 1.0f, 0.0f); drawLowPolyCylinder(0.026f, 0.018f); glPopMatrix();
+    
+    // 11. REAR PUMP BAND
+    glPushMatrix(); glTranslatef(0.135f, 0.067f, 0.0f); glRotatef(90.0f, 0.0f, 1.0f, 0.0f); drawLowPolyCylinder(0.026f, 0.018f); glPopMatrix();
+    
+    // 12. MAGAZINE CAP
+    glColor3f(0.06f, 0.06f, 0.06f);
+    glPushMatrix(); glTranslatef(0.505f, 0.065f, 0.0f); glRotatef(90.0f, 0.0f, 1.0f, 0.0f); drawLowPolyCylinder(0.026f, 0.025f); glPopMatrix();
+    
+    // 13. FRONT SIGHT
+    glColor3f(0.035f, 0.035f, 0.035f);
+    glPushMatrix(); glTranslatef(0.54f, 0.132f, 0.0f); glScalef(0.012f, 0.025f, 0.012f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 14. REAR SIGHT
+    glPushMatrix(); glTranslatef(0.045f, 0.124f, 0.0f); glScalef(0.025f, 0.015f, 0.014f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 15. RECEIVER DETAIL
+    glColor3f(0.18f, 0.18f, 0.18f);
+    glPushMatrix(); glTranslatef(0.075f, 0.065f, 0.029f); glScalef(0.045f, 0.025f, 0.004f); drawSolidCube(1.0f); glPopMatrix();
+    
+    // 16. STOCK DETAIL
+    glColor3f(0.18f, 0.065f, 0.025f);
+    glPushMatrix(); glTranslatef(-0.30f, 0.035f, 0.031f); glScalef(0.10f, 0.025f, 0.004f); drawSolidCube(1.0f); glPopMatrix();
+}
+
 void Scene::drawViewModel() {
     if (!isShotgunCollected) return;
 
-    // Clear depth so the gun never clips into walls!
+    // Clear depth so the gun never clips into walls
     glClear(GL_DEPTH_BUFFER_BIT); 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    // Position the gun in the bottom-right corner of the screen
-    glTranslatef(0.15f, -0.15f, -0.4f); 
-    glRotatef(5.0f, 0.0f, 1.0f, 0.0f); // Angle it slightly toward the center
+    // 1. Position the gun on the right side, slightly lower, and further forward
+    glTranslatef(0.2f, -0.15f, -0.5f); 
+    
+    // 2. Angle it slightly inward toward the center crosshair
+    glRotatef(5.0f, 0.0f, 1.0f, 0.0f); 
+    
+    // 3. Rotate POSITIVE 90 degrees so the barrel points FORWARD (-Z)
+    glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
 
-    // Enable lighting for dynamic flashlight reflections on the metal
     glEnable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
 
-    // Reuse our 4-part shotgun geometry
     glPushMatrix();
         glScalef(0.6f, 0.6f, 0.6f); 
-
-        // Grip & Shoulder Stock
-        glColor3f(0.25f, 0.12f, 0.08f); 
-        glPushMatrix(); glTranslatef(-0.15f, 0.02f, 0.0f); glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); glScalef(0.18f, 0.06f, 0.04f); drawSolidCube(1.0f); glPopMatrix();
-
-        // Main Receiver
-        glColor3f(0.15f, 0.15f, 0.15f); 
-        glPushMatrix(); glTranslatef(0.0f, 0.04f, 0.0f); glScalef(0.15f, 0.07f, 0.045f); drawSolidCube(1.0f); glPopMatrix();
-
-        // Pump Handle
-        glColor3f(0.25f, 0.12f, 0.08f); 
-        glPushMatrix(); glTranslatef(0.15f, 0.02f, 0.0f); glScalef(0.12f, 0.03f, 0.05f); drawSolidCube(1.0f); glPopMatrix();
-
-        // Barrel
-        glColor3f(0.1f, 0.1f, 0.1f); 
-        glPushMatrix(); glTranslatef(0.2f, 0.05f, 0.0f); glRotatef(90.0f, 0.0f, 0.0f, 1.0f); drawLowPolyCylinder(0.015f, 0.35f); glPopMatrix();
+        drawShotgunGeometry(); // Call your centralized 16-part model!
     glPopMatrix();
+    
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glEnable(GL_TEXTURE_2D);
+}
+
+void Scene::drawMonsters() {
+    glDisable(GL_TEXTURE_2D);
+    
+    for (int i = 0; i < 5; i++) {
+        if (!monsters[i].isAlive) continue;
+
+        glPushMatrix();
+            // Center the 2m tall monster vertically on the floor (Y = 1.0f)
+            glTranslatef(monsters[i].x, 1.0f, monsters[i].z);
+
+            // Draw a towering, pitch-black shadow entity
+            glColor3f(0.02f, 0.02f, 0.02f); 
+            glScalef(0.6f, 2.0f, 0.6f);
+            drawSolidCube(1.0f);
+        glPopMatrix();
+    }
     
     glColor3f(1.0f, 1.0f, 1.0f);
     glEnable(GL_TEXTURE_2D);
@@ -1203,6 +1417,15 @@ void Scene::positionCabinLights() {
     glLightfv(GL_LIGHT2, GL_POSITION, posLeftRoom);
     glLightfv(GL_LIGHT3, GL_POSITION, posRightRoom);
     glLightfv(GL_LIGHT4, GL_POSITION, posHallway);
+}
+
+void Scene::spawnMonsters() {
+    // Spawn 5 entities spread out in the forest surrounding the cabin
+    monsters[0] = {   0.0f,  30.0f, 100.0f, true }; // Front door path
+    monsters[1] = { -20.0f,  15.0f, 100.0f, true }; // Left woods
+    monsters[2] = {  20.0f,  15.0f, 100.0f, true }; // Right woods
+    monsters[3] = { -15.0f,  35.0f, 100.0f, true }; // Deep left
+    monsters[4] = {  15.0f,  35.0f, 100.0f, true }; // Deep right
 }
 
 void Scene::renderKeypadUI(int width, int height) {
@@ -1246,14 +1469,120 @@ void Scene::renderKeypadUI(int width, int height) {
 }
 
 void Scene::render(float camX, float camY, float camZ) {
-    drawSkybox(camX, camY, camZ); // 1. Draw the skybox first (at infinity)
+    drawSkybox(camX, camY, camZ); 
     
-    positionCabinLights();        // 2. Lock dynamic lights
-    drawEnvironment();            // 3. Draw the 3D world geometry
-    // 4. Draw interactive props
+    positionCabinLights();        
+    drawEnvironment();            
     for (int i = 0; i < 5; i++) {
         drawPuzzleDrawer(drawers[i]);
     }       
     drawChest();
-    debris.render();              // 5. Draw shotgun physics
+    drawMonsters();
+    debris.render();              
+}
+
+void Scene::renderEndScreen(int width, int height, bool isVictory, float endTimer) {
+    float fadeAlpha = (endTimer > 2.0f) ? 1.0f : (endTimer / 2.0f); // 2 second cinematic fade
+
+    glDisable(GL_DEPTH_TEST); glDisable(GL_LIGHTING); glDisable(GL_TEXTURE_2D);
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+    glOrtho(0, width, height, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Fade to Black (Win) or Dark Red (Death)
+    if (isVictory) {
+        glColor4f(0.0f, 0.0f, 0.0f, fadeAlpha); 
+    } else {
+        glColor4f(0.5f, 0.0f, 0.0f, fadeAlpha * 0.8f); 
+    }
+
+    glBegin(GL_QUADS);
+        glVertex2f(0, 0); glVertex2f(width, 0);
+        glVertex2f(width, height); glVertex2f(0, height);
+    glEnd();
+    glDisable(GL_BLEND);
+
+    // Draw the massive Text if the fade is mostly complete
+    if (endTimer > 1.0f) {
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glLineWidth(4.0f);
+        glPushMatrix();
+            glTranslatef(width / 2.0f, height / 2.0f, 0.0f);
+            glScalef(25.0f, -25.0f, 1.0f);
+            glBegin(GL_LINES);
+            if (isVictory) {
+                // YOU SURVIVED
+                glVertex2f(-6.5f, 1.0f); glVertex2f(-6.0f, 0.0f); glVertex2f(-5.5f, 1.0f); glVertex2f(-6.0f, 0.0f); glVertex2f(-6.0f, 0.0f); glVertex2f(-6.0f, -1.0f);
+                glVertex2f(-5.0f, 1.0f); glVertex2f(-4.0f, 1.0f); glVertex2f(-4.0f, 1.0f); glVertex2f(-4.0f, -1.0f); glVertex2f(-4.0f, -1.0f); glVertex2f(-5.0f, -1.0f); glVertex2f(-5.0f, -1.0f); glVertex2f(-5.0f, 1.0f);
+                glVertex2f(-3.0f, 1.0f); glVertex2f(-3.0f, -1.0f); glVertex2f(-3.0f, -1.0f); glVertex2f(-2.0f, -1.0f); glVertex2f(-2.0f, -1.0f); glVertex2f(-2.0f, 1.0f);
+                glVertex2f(0.0f, 1.0f); glVertex2f(-1.0f, 1.0f); glVertex2f(-1.0f, 1.0f); glVertex2f(-1.0f, 0.0f); glVertex2f(-1.0f, 0.0f); glVertex2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f); glVertex2f(0.0f, -1.0f); glVertex2f(0.0f, -1.0f); glVertex2f(-1.0f, -1.0f);
+                glVertex2f(1.0f, 1.0f); glVertex2f(1.0f, -1.0f); glVertex2f(1.0f, -1.0f); glVertex2f(2.0f, -1.0f); glVertex2f(2.0f, -1.0f); glVertex2f(2.0f, 1.0f);
+                glVertex2f(3.0f, -1.0f); glVertex2f(3.0f, 1.0f); glVertex2f(3.0f, 1.0f); glVertex2f(4.0f, 1.0f); glVertex2f(4.0f, 1.0f); glVertex2f(4.0f, 0.0f); glVertex2f(4.0f, 0.0f); glVertex2f(3.0f, 0.0f); glVertex2f(3.0f, 0.0f); glVertex2f(4.0f, -1.0f);
+                glVertex2f(5.0f, 1.0f); glVertex2f(5.5f, -1.0f); glVertex2f(5.5f, -1.0f); glVertex2f(6.0f, 1.0f);
+                glVertex2f(6.5f, 1.0f); glVertex2f(7.5f, 1.0f); glVertex2f(7.0f, 1.0f); glVertex2f(7.0f, -1.0f); glVertex2f(6.5f, -1.0f); glVertex2f(7.5f, -1.0f);
+                glVertex2f(8.0f, 1.0f); glVertex2f(8.5f, -1.0f); glVertex2f(8.5f, -1.0f); glVertex2f(9.0f, 1.0f);
+                glVertex2f(11.0f, 1.0f); glVertex2f(10.0f, 1.0f); glVertex2f(10.0f, 1.0f); glVertex2f(10.0f, -1.0f); glVertex2f(10.0f, -1.0f); glVertex2f(11.0f, -1.0f); glVertex2f(10.0f, 0.0f); glVertex2f(10.5f, 0.0f);
+                glVertex2f(12.0f, -1.0f); glVertex2f(12.0f, 1.0f); glVertex2f(12.0f, 1.0f); glVertex2f(12.8f, 0.8f); glVertex2f(12.8f, 0.8f); glVertex2f(12.8f, -0.8f); glVertex2f(12.8f, -0.8f); glVertex2f(12.0f, -1.0f);
+            } else {
+                // YOU DIED
+                glVertex2f(-4.0f, 1.0f); glVertex2f(-3.5f, 0.0f); glVertex2f(-3.0f, 1.0f); glVertex2f(-3.5f, 0.0f); glVertex2f(-3.5f, 0.0f); glVertex2f(-3.5f, -1.0f);
+                glVertex2f(-2.5f, 1.0f); glVertex2f(-1.5f, 1.0f); glVertex2f(-1.5f, 1.0f); glVertex2f(-1.5f, -1.0f); glVertex2f(-1.5f, -1.0f); glVertex2f(-2.5f, -1.0f); glVertex2f(-2.5f, -1.0f); glVertex2f(-2.5f, 1.0f);
+                glVertex2f(-0.5f, 1.0f); glVertex2f(-0.5f, -1.0f); glVertex2f(-0.5f, -1.0f); glVertex2f(0.5f, -1.0f); glVertex2f(0.5f, -1.0f); glVertex2f(0.5f, 1.0f);
+                glVertex2f(2.0f, -1.0f); glVertex2f(2.0f, 1.0f); glVertex2f(2.0f, 1.0f); glVertex2f(2.8f, 0.8f); glVertex2f(2.8f, 0.8f); glVertex2f(2.8f, -0.8f); glVertex2f(2.8f, -0.8f); glVertex2f(2.0f, -1.0f);
+                glVertex2f(3.5f, 1.0f); glVertex2f(3.5f, -1.0f);
+                glVertex2f(5.5f, 1.0f); glVertex2f(4.5f, 1.0f); glVertex2f(4.5f, 1.0f); glVertex2f(4.5f, -1.0f); glVertex2f(4.5f, -1.0f); glVertex2f(5.5f, -1.0f); glVertex2f(4.5f, 0.0f); glVertex2f(5.0f, 0.0f);
+                glVertex2f(6.5f, -1.0f); glVertex2f(6.5f, 1.0f); glVertex2f(6.5f, 1.0f); glVertex2f(7.3f, 0.8f); glVertex2f(7.3f, 0.8f); glVertex2f(7.3f, -0.8f); glVertex2f(7.3f, -0.8f); glVertex2f(6.5f, -1.0f);
+            }
+            glEnd();
+        glPopMatrix();
+        glLineWidth(1.0f);
+    }
+
+    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW);
+    glEnable(GL_DEPTH_TEST); glEnable(GL_LIGHTING); glEnable(GL_TEXTURE_2D);
+}
+
+void Scene::renderDamageOverlay(int width, int height) {
+    // Only draw if we are actively taking damage
+    if (playerHealth >= 100.0f || playerHealth <= 0.0f) return;
+
+    // Calculate how intense the red should be (lower health = darker red)
+    float damageAlpha = (100.0f - playerHealth) / 100.0f; 
+
+    glDisable(GL_DEPTH_TEST); glDisable(GL_LIGHTING); glDisable(GL_TEXTURE_2D);
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
+    glOrtho(0, width, height, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+
+    // Draw a pulsating red screen tint
+    glColor4f(0.8f, 0.0f, 0.0f, damageAlpha * 0.6f);
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBegin(GL_QUADS);
+        glVertex2f(0, 0); glVertex2f(width, 0);
+        glVertex2f(width, height); glVertex2f(0, height);
+    glEnd();
+    glDisable(GL_BLEND);
+
+    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW);
+    glEnable(GL_DEPTH_TEST); glEnable(GL_LIGHTING); glEnable(GL_TEXTURE_2D);
+}
+
+void Scene::reset() {
+    playerHealth = 100.0f;
+    monstersKilled = 0;
+    isChestUnlocked = false;
+    isChestKeypadActive = false;
+    currentCode = "";
+    isShotgunCollected = false;
+    justPickedUpShotgun = false;
+    chestLidAngle = 0.0f;
+    
+    // Close drawers and hide monsters
+    for (int i = 0; i < 5; i++) {
+        drawers[i].isOpen = false;
+        drawers[i].isNoteInspected = false;
+        monsters[i].isAlive = false;
+    }
 }

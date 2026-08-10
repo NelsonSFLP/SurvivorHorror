@@ -3,7 +3,7 @@
 
 int main() {
     // Instantiate the engine with standard 720p resolution
-    Engine engine(1280, 720, "Survival Horror - OpenGL 2.1 Modular Engine");
+    Engine engine(2560, 1440, "Survival Horror - OpenGL 2.1 Modular Engine");
     
     // Initialize systems and hardware contexts
     if (!engine.init()) {

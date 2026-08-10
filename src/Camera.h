@@ -26,6 +26,8 @@ public:
     //Aquires positions and foward looking vectors
     void getPosition(float& x, float& y, float& z) const;
     void getForwardVector(float& dx, float& dy, float& dz) const;
+
+    void reset();
 };
 
 #endif // CAMERA_H

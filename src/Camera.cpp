@@ -91,3 +91,11 @@ void Camera::getForwardVector(float& dx, float& dy, float& dz) const {
     dy = sin(radPitch);
     dz = sin(radYaw) * cos(radPitch);
 }
+
+void Camera::reset() {
+    x = 0.0f;
+    y = 1.7f;
+    z = 15.0f; // Return to the forest spawn point!
+    yaw = -90.0f;
+    pitch = 0.0f;
+}

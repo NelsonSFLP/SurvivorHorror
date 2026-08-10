@@ -27,6 +27,17 @@ private:
 
     PuzzleDrawer drawers[5];
 
+    // Monster Data Structure
+    struct Monster {
+        float x, z;
+        float health;
+        bool isAlive;
+    };
+    
+    Monster monsters[5];
+
+    void drawMonsters();
+
     // Helper methods for procedural geometry
     float getTerrainHeight(float x, float z) const;
     void drawLowPolyCone(float radius, float height);
@@ -39,6 +50,8 @@ private:
     void drawEnvironment();
     void drawPuzzleDrawer(PuzzleDrawer& drawer);
     void drawSkybox(float camX, float camY, float camZ);
+    void drawTaperedBox(float length, float heightFront, float heightBack, float depthFront, float depthBack);
+    void drawShotgunGeometry();
 
     //drawer manipulation 
     bool isDrawerOpen;
@@ -87,17 +100,25 @@ public:
     bool isShotgunCollected;
     bool justPickedUpShotgun;
 
+    void spawnMonsters();
+    int monstersKilled;
+
+    float playerHealth;
+    void reset();
+
     void drawChest();
-    void renderKeypadUI(int width, int height);
     void drawViewModel();
+    void renderKeypadUI(int width, int height); 
+    void renderEndScreen(int width, int height, bool isVictory, float endTimer);
 
     // Interation functions
-    void updatePhysics(float deltaTime);
+    void updatePhysics(float deltaTime, float playerX, float playerZ);
     bool tryInteract(const Ray& cameraRay);
     void shoot(const Ray& cameraRay);
 
     // Overlay for interactive objects
     void renderOverlay();
+    void renderDamageOverlay(int width, int height); 
 
     // Checking player walkable zone
     bool isWalkable(float targetX, float targetZ) const;

@@ -39,6 +39,7 @@ void Engine::handleInteraction() {
         } else if (scene.justPickedUpShotgun) {
             // STATE TRANSITION: The player has armed themselves!
             currentState = GameState::COMBAT;
+            scene.spawnMonsters(); // SPAWN THE HORDE!
             std::cout << "[SYSTEM] SHOTGUN ACQUIRED. THE HUNT BEGINS." << std::endl;
         }
     }
@@ -52,8 +53,15 @@ void Engine::handleShooting() {
     float dX, dY, dZ; camera.getForwardVector(dX, dY, dZ);
     Ray ray = { cX, cY, cZ, dX, dY, dZ };
 
-    // Trigger the debris system!
+    // Trigger the debris system
     scene.shoot(ray); 
+
+    // Check Win Condition
+    if (scene.monstersKilled >= 5) {
+        currentState = GameState::COMPLETED;
+        endTimer = 0.0f;
+        std::cout << "[SYSTEM] ALL ENTITIES ELIMINATED. YOU SURVIVED." << std::endl;
+    }
 }
 
 void Engine::renderBlinkOverlay(int width, int height) {
@@ -254,16 +262,26 @@ int Engine::run() {
         glfwPollEvents();
 
         // --- 1. UPDATE PHASE ---
-        // Branch logic based on our Game State
+        float px, py, pz; 
+        camera.getPosition(px, py, pz);
+
         if (currentState == GameState::AWAKENING) {
             updateAwakening(deltaTime);
-        } else if (currentState == GameState::KEYPAD) {
-            // Freeze WASD movement, but keep updating physics so the chest can open!
-            scene.updatePhysics(deltaTime);
+        } else if (currentState == GameState::KEYPAD || currentState == GameState::COMPLETED || currentState == GameState::GAME_OVER) {
+            // Freeze WASD movement, but keep updating physics
+            scene.updatePhysics(deltaTime, px, pz);
         } else {
-            // Fully awake and exploring
+            // Fully awake and exploring/combat
             processInput();
-            scene.updatePhysics(deltaTime);
+            camera.getPosition(px, py, pz);
+            scene.updatePhysics(deltaTime, px, pz);
+        }
+
+        // Check Death Condition!
+        if (currentState == GameState::COMBAT && scene.playerHealth <= 0.0f) {
+            currentState = GameState::GAME_OVER;
+            endTimer = 0.0f;
+            std::cout << "[SYSTEM] YOU DIED." << std::endl;
         }
 
         // --- 2. RENDER PIPELINE ---
@@ -287,9 +305,10 @@ int Engine::run() {
         // Overlay for interactive objects (e.g., Reading notes)
         scene.renderOverlay();
 
-        // Draw the first-person shotgun if we are in combat!
+        // Draw the first-person shotgun if we are in combat
         if (currentState == GameState::COMBAT) {
             scene.drawViewModel();
+            scene.renderDamageOverlay(width, height); // Hook up the visual damage!
         }
 
         // --- 3. CINEMATIC OVERLAY ---
@@ -301,7 +320,26 @@ int Engine::run() {
         // Draw the digital keypad if active
         scene.renderKeypadUI(width, height);
 
+        // Draw the End Screens
+        if (currentState == GameState::COMPLETED || currentState == GameState::GAME_OVER) {
+            endTimer += deltaTime;
+            
+            // Cleanly call the modular rendering function!
+            scene.renderEndScreen(width, height, currentState == GameState::COMPLETED, endTimer);
+
+            // Trigger the final event after 6 seconds
+            if (endTimer > 6.0f) {
+                if (currentState == GameState::COMPLETED) {
+                    glfwSetWindowShouldClose(window, true);
+                } else {
+                    resetGame(); // Wake up in the forest again!
+                }
+            }
+        }
+        
+        // Swap buffers and poll IO events
         glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
     return 0;
@@ -349,4 +387,13 @@ void Engine::windowFocusCallback(GLFWwindow* window, int focused) {
     if (focused) {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     }
+}
+
+void Engine::resetGame() {
+    currentState = GameState::AWAKENING;
+    awakeningTimer = 0.0f;
+    endTimer = 0.0f;
+    scene.reset();
+    camera.reset();
+    std::cout << "[SYSTEM] GAME RESET." << std::endl;
 }
