@@ -228,6 +228,7 @@ bool Scene::tryInteract(const Ray& cameraRay) {
     for (int i = 0; i < 5; i++) {
         if (drawers[i].isNoteInspected) {
             drawers[i].isNoteInspected = false;
+            cursedSigil.reset();
             return true;
         }
     }
@@ -319,6 +320,7 @@ bool Scene::tryInteract(const Ray& cameraRay) {
             if (!isChestUnlocked) isChestKeypadActive = true;
         } else if (hitNote) {
             drawers[hitIndex].isNoteInspected = true;
+            if (hitIndex == 4) cursedSigil.startAnimation();
         } else {
             drawers[hitIndex].isOpen = !drawers[hitIndex].isOpen;
         }
@@ -352,30 +354,47 @@ void Scene::renderOverlay() {
             glMatrixMode(GL_MODELVIEW);
             glLoadIdentity();
 
-            // Disable lighting and textures so the note is bright and readable
             glDisable(GL_LIGHTING);
-            glDisable(GL_TEXTURE_2D);
+            glEnable(GL_TEXTURE_2D); 
+
+            // 1. Bind the correct texture based on WHICH note we are holding
+            if (i == 0) texManager.bindTexture(texNote1);
+            else if (i == 1) texManager.bindTexture(texNote2);
+            else if (i == 2) texManager.bindTexture(texNote3);
+            else if (i == 3) texManager.bindTexture(texNote4);
+            else glDisable(GL_TEXTURE_2D); // Note 4 (Corridor) relies on the Sigil, no texture needed
 
             glPushMatrix();
-                // 1. Move it 0.5 meters directly in front of the camera lens
+                // A. Move BOTH the paper AND the sigil into position together!
                 glTranslatef(0.0f, 0.0f, -0.5f);
-
-                // 2. THE GEOMETRY FIX: Tilt the paper 90 degrees upward so it faces the screen!
                 glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+                
+                // B. Draw the Paper (Scaled flat)
+                glPushMatrix();
+                    glScalef(0.4f, 0.02f, 0.5f);
 
-                // 3. Draw the physical sheet of paper
-                glScalef(0.4f, 0.02f, 0.5f);
-                glColor3f(0.8f, 0.8f, 0.7f); // Aged paper color
-                drawSolidCube(1.0f);
+                    // Aged paper for the sigil, bright white for the textures
+                    if (i == 4) glColor3f(0.8f, 0.8f, 0.7f);
+                    else glColor3f(1.0f, 1.0f, 1.0f);
+
+                    drawSolidCube(1.0f);
+                glPopMatrix();
+
+                // C. Draw the Sigil exactly on top of the paper's surface
+                if (i == 4) {
+                    glDisable(GL_TEXTURE_2D);
+                    glPushMatrix();
+                        // THE FIX: Lift the sigil 1.5cm off the center so it rests on the front surface!
+                        glTranslatef(0.0f, 0.015f, 0.0f);
+                        cursedSigil.render();
+                    glPopMatrix();
+                }
             glPopMatrix();
 
             // Restore engine states for the next frame
             glEnable(GL_TEXTURE_2D);
             glEnable(GL_LIGHTING);
             glColor3f(1.0f, 1.0f, 1.0f);
-
-            // If you kept the Bézier sigil from earlier, you can call it here!
-            cursedSigil.render();
 
             return; // Only draw one note at a time
         }
@@ -410,6 +429,11 @@ void Scene::loadAssets(){
     texGrass = texManager.loadTexture("grass.jpg");
     texDirt = texManager.loadTexture("dirt.jpg");
     texSky = texManager.loadTexture("sky.jpg");
+    texNote1 = texManager.loadTexture("note_main1.jpg"); // Main Room Left
+    texNote2 = texManager.loadTexture("note_main2.jpg"); // Main Room Right
+    texNote3 = texManager.loadTexture("note_left.jpg");  // Left Bedroom
+    texNote4 = texManager.loadTexture("note_right.jpg"); // Right Bedroom
+
     std::cout << "[SYSTEM] textures loaded successfully." << std::endl;
 }
 

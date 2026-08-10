@@ -16,6 +16,9 @@ private:
     // Texture IDs
     GLuint texFloor, texWall, texWood, texGrass, texDirt, texSky; 
 
+    // Textures for the 4 written letters
+    GLuint texNote1, texNote2, texNote3, texNote4;
+
     // Drawer structure
     struct PuzzleDrawer {
     float x, z;
